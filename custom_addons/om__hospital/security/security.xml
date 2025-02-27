@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<odoo>
+    <data noupdate="0">
+        <record id="module_category_hospital" model="ir.module.category">
+            <field name="name">Hospital</field>
+            <field name="sequence">5</field>
+        </record>
+
+        <record id="group_hospital_receptionist" model="res.groups">
+            <field name="name">Receptionist</field>
+            <field name="category_id" ref="om__hospital.module_category_hospital"/>
+            <field name="implied_ids" eval="[(4, ref('base.group_user'))]"/>
+            <field name="comment">the user will have access to appointments</field>
+        </record>
+
+        <record id="group_hospital_doctors" model="res.groups">
+            <field name="name">Doctors</field>
+            <field name="category_id" ref="om__hospital.module_category_hospital"/>
+            <field name="implied_ids" eval="[(4, ref('om__hospital.group_hospital_receptionist'))]"/>
+            <field name="comment">the user will have access patient details.</field>
+        </record>
+
+        #the rule filter things by domain you put the rule inside the domain here for example we need
+        #the create_uid to equal the user.id
+
+        <record id="receptionist_own_appointment_rule" model="ir.rule">
+            <field name="name">receptionist : view own records</field>
+            <field name="model_id" ref="model_hospital_appointment"/>
+            <field name="groups" eval="[Command.set([ref('om__hospital.group_hospital_receptionist')])]"/>
+            <field name="domain_force">[('create_uid','=', user.id)]</field>
+        </record>
+
+        <record id="doctor_view_all_appointment_rule" model="ir.rule">
+            <field name="name">doctor : view all records</field>
+            <field name="model_id" ref="model_hospital_appointment"/>
+            <field name="groups" eval="[Command.set([ref('om__hospital.group_hospital_doctors')])]"/>
+            <field name="domain_force">[]</field>
+        </record>
+    </data>
+</odoo>

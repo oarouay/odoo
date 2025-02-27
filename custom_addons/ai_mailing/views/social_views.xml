@@ -1,0 +1,136 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <!-- Social Email View -->
+    <record id="view_social_email_form" model="ir.ui.view">
+        <field name="name">social.email.form</field>
+        <field name="model">social.email</field>
+        <field name="arch" type="xml">
+            <form string="Email Post">
+            <sheet>
+                <group>
+                    <group>
+                        <field name="name"/>
+                        <field name="content"/>
+                    </group>
+                    <group>
+                        <field name="recipient_ids" widget="many2many_tags"/>
+                        <field name="email_addresses"/>
+                        <field name="publish_date"/>
+                    </group>
+                </group>
+            </sheet>
+        </form>
+        </field>
+    </record>
+
+    <record id="view_social_email_tree" model="ir.ui.view">
+        <field name="name">social.email.tree</field>
+        <field name="model">social.email</field>
+        <field name="arch" type="xml">
+            <tree string="Emails">
+                <field name="name"/>
+                <field name="publish_date"/>
+            </tree>
+        </field>
+    </record>
+
+    <!-- WhatsApp View -->
+    <record id="view_social_whatsapp_form" model="ir.ui.view">
+        <field name="name">social.whatsapp.form</field>
+        <field name="model">social.whatsapp</field>
+        <field name="arch" type="xml">
+            <form string="WhatsApp Message">
+                <sheet>
+                    <group>
+                        <group>
+                            <field name="name"/>
+                            <field name="message"/>
+                            <field name="publish_date"/>
+                        </group>
+                        <group>
+                            <field name="recipient_ids" widget="many2many_tags"/>
+                            <field name="phone_numbers"/>
+                        </group>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_social_whatsapp_tree" model="ir.ui.view">
+        <field name="name">social.whatsapp.tree</field>
+        <field name="model">social.whatsapp</field>
+        <field name="arch" type="xml">
+            <tree string="WhatsApp Messages">
+                <field name="name"/>
+                <field name="publish_date"/>
+            </tree>
+        </field>
+    </record>
+
+    <!-- Instagram View -->
+    <record id="view_social_instagram_form" model="ir.ui.view">
+        <field name="name">social.instagram.form</field>
+        <field name="model">social.instagram</field>
+        <field name="arch" type="xml">
+            <form string="Instagram Post">
+                <sheet>
+                    <group>
+                        <field name="name"/>
+<!--                        <field name="image"/>-->
+                        <field name="caption"/>
+                        <field name="publish_date"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_social_instagram_tree" model="ir.ui.view">
+        <field name="name">social.instagram.tree</field>
+        <field name="model">social.instagram</field>
+        <field name="arch" type="xml">
+            <tree string="Instagram Posts">
+                <field name="name"/>
+                <field name="publish_date"/>
+            </tree>
+        </field>
+    </record>
+
+    <!-- Facebook View -->
+    <record id="view_social_facebook_form" model="ir.ui.view">
+        <field name="name">social.facebook.form</field>
+        <field name="model">social.facebook</field>
+        <field name="arch" type="xml">
+            <form string="Facebook Post">
+                <sheet>
+                    <header>
+                        <button name="action_confirm" type="object" string="Confirm" invisible="fb_scheduling_status != 'draft'"
+                            class="oe_highlight"/>
+                        <button name="action_confirm" type="object" string="Re try" invisible="fb_scheduling_status != 'failed'"
+                            class="oe_highlight"/>
+                        <button name="action_cancel" type="object" string="Cancel" invisible="fb_scheduling_status == 'draft' or fb_scheduling_status == 'published' or fb_scheduling_status == 'failed'"/>
+                        <field name="fb_scheduling_status" widget="statusbar" options="{'statusbar_visible': ['draft', 'scheduled', 'published', 'failed']}"/>
+                    </header>
+                    <group>
+                        <field name="name"/>
+                        <field name="content"/>
+                        <field name="fb_scheduling_status"/>
+                        <field name="publish_date"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_social_facebook_tree" model="ir.ui.view">
+        <field name="name">social.facebook.tree</field>
+        <field name="model">social.facebook</field>
+        <field name="arch" type="xml">
+            <tree string="Facebook Posts">
+                <field name="name"/>
+                <field name="publish_date"/>
+            </tree>
+        </field>
+    </record>
+</odoo>

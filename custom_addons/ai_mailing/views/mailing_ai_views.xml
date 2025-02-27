@@ -1,0 +1,106 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <record id="view_marketing_campaign_form" model="ir.ui.view">
+        <field name="name">marketing.campaign.form</field>
+        <field name="model">marketing.campaign</field>
+        <field name="arch" type="xml">
+            <form>
+                <sheet>
+                    <header>
+                        <button name="action_confirm" type="object" string="Confirm" class="oe_highlight"/>
+                        <field name="status" widget="statusbar" options="{'statusbar_visible': ['draft', 'running', 'completed', 'canceled']}"/>
+                    </header>
+
+                    <!-- Overview Section -->
+                    <group string="Overview">
+                        <group>
+                            <field name="name"/>
+                            <field name="campaign_type"/>
+                        </group>
+                        <group>
+                            <field name="start_date"/>
+                            <field name="end_date"/>
+                        </group>
+                    </group>
+
+                    <!-- AI Content Configuration -->
+                    <group string="AI Content Configuration">
+                        <group>
+                            <field name="content_strategy"/>
+                            <field name="context"/>
+                        </group>
+                        <group>
+                            <field name="post_frequency"/>
+                            <field name="tag_ids" widget="many2many_tags"/>
+                            <field name="optional_product_tags" widget="many2many_tags" readonly="0"/>
+                        </group>
+                    </group>
+
+                    <!-- Notebook for Platform-Specific Content -->
+                    <notebook>
+                        <!-- Email Tab -->
+                        <page string="Email">
+                            <field name="email_ids">
+                                <tree>
+                                    <field name="name"/>
+                                    <field name="content"/>
+                                    <field name="email_addresses"/>
+                                    <field name="publish_date"/>
+                                </tree>
+                            </field>
+                            <button string="Generate New Email" type="object" name="action_generate_email_content" class="btn-primary"/>
+                        </page>
+
+                        <!-- Facebook Tab -->
+                        <page string="Facebook">
+                            <field name="facebook_ids">
+                                <tree>
+                                    <field name="name"/>
+                                    <field name="content"/>
+                                    <field name="publish_date"/>
+                                </tree>
+                            </field>
+                            <button string="Generate New Facebook Post" type="object" name="action_generate_facebook_content" class="btn-primary"/>
+                        </page>
+
+                        <!-- Instagram Tab -->
+                        <page string="Instagram">
+                            <field name="instagram_ids">
+                                <tree>
+                                    <field name="name"/>
+                                    <field name="caption"/>
+                                    <field name="publish_date"/>
+                                </tree>
+                            </field>
+                            <button string="Generate New Instagram Post" type="object" name="action_generate_instagram_content" class="btn-primary"/>
+                        </page>
+
+                        <!-- WhatsApp Tab -->
+                        <page string="WhatsApp">
+                            <field name="whatsapp_ids">
+                                <tree>
+                                    <field name="name"/>
+                                    <field name="message"/>
+                                    <field name="phone_numbers"/>
+                                    <field name="publish_date"/>
+                                </tree>
+                            </field>
+                            <button string="Generate New WhatsApp Message" type="object" name="action_generate_whatsapp_content" class="btn-primary"/>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="action_mailing_ai" model="ir.actions.act_window">
+        <field name="name">Campaign Management</field>
+        <field name="res_model">marketing.campaign</field>
+        <field name="view_mode">tree,form</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Create a campaign
+            </p>
+        </field>
+    </record>
+</odoo>

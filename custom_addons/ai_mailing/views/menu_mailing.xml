@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<odoo>
+    <menuitem id="mailing_menu_root" name="AIM"/>
+
+    <menuitem name="Generate Email with AI"
+              id="ai_mass_mailing_menu"
+              parent="mailing_menu_root"
+              action="action_mailing_ai"/>
+
+    <menuitem id="menu_configuration"
+              name="Configuration"
+              parent="mailing_menu_root"/>
+
+    <menuitem id="menu_prompt_tag"
+              name="Tags"
+              parent="menu_configuration"
+              action="action_prompt_tag"/>
+
+    <menuitem id="menu_prompt_social"
+              name="Socials"
+              parent="menu_configuration"/>
+
+    <!-- Submenus under Socials -->
+    <menuitem id="menu_social_email"
+              name="Emails"
+              parent="menu_prompt_social"
+              action="action_social_email"/>
+
+    <menuitem id="menu_social_whatsapp"
+              name="WhatsApp"
+              parent="menu_prompt_social"
+              action="action_social_whatsapp"/>
+
+    <menuitem id="menu_social_instagram"
+              name="Instagram"
+              parent="menu_prompt_social"
+              action="action_social_instagram"/>
+
+    <menuitem id="menu_social_facebook"
+              name="Facebook"
+              parent="menu_prompt_social"
+              action="action_social_facebook"/>
+</odoo>

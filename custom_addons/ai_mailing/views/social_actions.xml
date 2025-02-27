@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <!-- Email Action -->
+    <record id="action_social_email" model="ir.actions.act_window">
+        <field name="name">Email Posts</field>
+        <field name="res_model">social.email</field>
+        <field name="view_mode">tree,form</field>
+    </record>
+
+    <!-- WhatsApp Action -->
+    <record id="action_social_whatsapp" model="ir.actions.act_window">
+        <field name="name">WhatsApp Messages</field>
+        <field name="res_model">social.whatsapp</field>
+        <field name="view_mode">tree,form</field>
+    </record>
+
+    <!-- Instagram Action -->
+    <record id="action_social_instagram" model="ir.actions.act_window">
+        <field name="name">Instagram Posts</field>
+        <field name="res_model">social.instagram</field>
+        <field name="view_mode">tree,form</field>
+    </record>
+
+    <!-- Facebook Action -->
+    <record id="action_social_facebook" model="ir.actions.act_window">
+        <field name="name">Facebook Posts</field>
+        <field name="res_model">social.facebook</field>
+        <field name="view_mode">tree,form</field>
+    </record>
+</odoo>

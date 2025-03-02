@@ -230,6 +230,7 @@ class MarketingCampaign(models.Model):
                 raise ValueError(f"Invalid JSON response from AI model: {str(e)}")
             format = "%Y-%m-%d %H:%M:%S"
             date_object = datetime.strptime(email_data.get("date_of_post"), format)
+            print(date_object)
             self.env['social.email'].create({
                 'campaign_id': self.id,
                 'name': email_data.get("subject_line",""),

@@ -75,6 +75,14 @@
         <field name="arch" type="xml">
             <form string="Instagram Post">
                 <sheet>
+                    <header>
+                        <button name="action_confirm" type="object" string="Confirm" invisible="ig_scheduling_status != 'draft'"
+                            class="oe_highlight"/>
+                        <button name="action_confirm" type="object" string="Re try" invisible="ig_scheduling_status != 'failed'"
+                            class="oe_highlight"/>
+                        <button name="action_cancel" type="object" string="Cancel" invisible="ig_scheduling_status == 'draft' or ig_scheduling_status == 'published' or ig_scheduling_status == 'failed'"/>
+                        <field name="ig_scheduling_status" widget="statusbar" options="{'statusbar_visible': ['draft', 'scheduled', 'published', 'failed']}"/>
+                    </header>
                     <group>
                         <field name="name"/>
 <!--                        <field name="image"/>-->
@@ -115,7 +123,6 @@
                     <group>
                         <field name="name"/>
                         <field name="content"/>
-                        <field name="fb_scheduling_status"/>
                         <field name="publish_date"/>
                     </group>
                 </sheet>
@@ -132,5 +139,15 @@
                 <field name="publish_date"/>
             </tree>
         </field>
+    </record>
+
+    <record id="check_publish_date_cron" model="ir.cron">
+        <field name="name">Instagram: Check publish date</field>
+        <field name="model_id" ref="model_social_instagram"/>
+        <field name="state">code</field>
+        <field name="code">model.cron_publish_scheduled_posts()</field>
+        <field name="interval_number">1</field>
+        <field name="interval_type">minutes</field>
+        <field name="numbercall">-1</field>
     </record>
 </odoo>

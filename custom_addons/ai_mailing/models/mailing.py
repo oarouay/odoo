@@ -1,9 +1,9 @@
-from fsspec.registry import default
+from odoo.exceptions import UserError
 
 from odoo import models, fields, api
 import google.generativeai as genai
 from dotenv import load_dotenv
-from datetime import datetime
+from datetime import datetime, date
 import os
 import json
 from math import floor
@@ -59,6 +59,15 @@ class MarketingCampaign(models.Model):
         compute="_compute_optional_product_tags",
         store=True
     )
+
+    @api.onchange('start_date','end_date')
+    def check_date_validity(self):
+        s = self.start_date
+        e = self.end_date
+        if e<=s :
+            raise UserError("The end date must be greater than the start date")
+        if s<date.today() :
+            raise UserError("The start date must be greater than todays date")
 
     @api.depends('start_date','end_date','email_ids', 'whatsapp_ids', 'instagram_ids', 'facebook_ids')
     def _compute_post_frequency(self):

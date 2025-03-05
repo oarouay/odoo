@@ -74,7 +74,10 @@ class MarketingCampaign(models.Model):
         for record in self:
             s=self.start_date
             e=self.end_date
-            num_weeks = (e - s).days / 7
+            if isinstance(s, date) and isinstance(e, date):
+                num_weeks = (e - s).days / 7
+            else:
+                num_weeks = 0
             total_posts = sum([
                 len(record.email_ids),
                 len(record.whatsapp_ids),

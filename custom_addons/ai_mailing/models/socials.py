@@ -1,21 +1,31 @@
+import smtplib
+from email.mime.text import MIMEText
+
 from odoo import models, fields, api
 from dotenv import load_dotenv
 import os
 import time
 from datetime import datetime
 import requests
-
+import pywhatkit as kit
 
 load_dotenv()
 
 class SocialEmail(models.Model):
     _name = 'social.email'
     _description = 'Social Email'
+    _inherit = ['mail.thread']
 
     name = fields.Char(string="Email Subject", required=True)
     content = fields.Text(string="Content")
     campaign_id = fields.Many2one('marketing.campaign', string='Campaign')
     is_published = fields.Boolean(string="Is Published", default=False)
+    mail_scheduling_status = fields.Selection([
+        ('draft', 'Draft'),
+        ('scheduled', 'Scheduled for Sending'),
+        ('sent', 'Sent'),
+        ('failed', 'Sending Failed')
+    ], string="Scheduling Status", default='draft')
     recipient_ids = fields.Many2many(
         'res.partner',
         string="Recipients",
@@ -29,10 +39,57 @@ class SocialEmail(models.Model):
         for record in self:
             record.email_addresses = ', '.join(record.recipient_ids.mapped('email'))
 
+    def action_confirm(self):
+        """Mark message as scheduled"""
+        self.write({'mail_scheduling_status': 'scheduled'})
+        self.message_post(body=f"WhatsApp message scheduled for {self.publish_date}")
+
+    @api.model
+    def cron_send_scheduled_emails(self):
+        """Cron job to send scheduled WhatsApp messages."""
+        now = datetime.now()
+        emails = self.search([
+            ('mail_scheduling_status', '=', 'scheduled'),
+            ('publish_date', '<=', now)
+        ])
+        for email in emails:
+            email.send_email()
+
+    def send_email(self):
+        for record in self:
+            sender_email="oussamadarouay@gmail.com"
+            password=os.getenv("PASSWORD")
+
+            # Create email message
+            msg =MIMEText(self.content)
+            msg["Subject"] = self.name
+            msg["From"] = sender_email
+            msg["To"] = self.email_addresses  # Convert list to comma-separated string
+
+            emails=record.email_addresses = record.email_addresses.split(', ') if record.email_addresses else []
+
+
+            # SMTP setup and send email
+            try:
+                server = smtplib.SMTP("smtp.gmail.com", 587)
+                server.starttls()  # Secure the connection
+                server.login(sender_email, password)
+                server.sendmail(sender_email,emails, msg.as_string())  # Send to multiple recipients
+                server.quit()
+                self.write({'mail_scheduling_status': 'sent'})
+                self.message_post(body="Email message successfully sent!")
+            except Exception as e:
+                self.write({'mail_scheduling_status': 'failed'})
+                self.message_post(body=f"Failed to send Email message: {str(e)}")
+
+    def action_cancel(self):
+        """Cancel a scheduled WhatsApp message"""
+        self.write({'mail_scheduling_status': 'draft'})
 
 class SocialWhatsApp(models.Model):
     _name = 'social.whatsapp'
     _description = 'Social WhatsApp Message'
+    _inherit = ['mail.thread']
 
     name = fields.Char(string="Message Title", required=True)
     message = fields.Text(string="Message")
@@ -41,15 +98,69 @@ class SocialWhatsApp(models.Model):
     recipient_ids = fields.Many2many(
         'res.partner',
         string="Recipients",
-        domain="[('mobile', '!=', False)]"
+        domain="[('phone', '!=', False)]"
     )
     phone_numbers = fields.Char(string="Phone Numbers", compute="_compute_phone_numbers", readonly=True)
     publish_date = fields.Datetime(string="Publish Date")
-
+    wa_scheduling_status = fields.Selection([
+        ('draft', 'Draft'),
+        ('scheduled', 'Scheduled for Sending'),
+        ('sent', 'Sent'),
+        ('failed', 'Sending Failed')
+    ], string="Scheduling Status", default='draft')
     @api.depends("recipient_ids")
     def _compute_phone_numbers(self):
         for record in self:
-            record.phone_numbers = ', '.join(record.recipient_ids.mapped('mobile'))
+            record.phone_numbers = ', '.join(record.recipient_ids.mapped('phone'))
+
+    def action_confirm(self):
+        """Mark message as scheduled"""
+        # self.write({'wa_scheduling_status': 'scheduled'})
+        # self.message_post(body=f"WhatsApp message scheduled for {self.publish_date}")
+        self.send_whatsapp_message()
+
+    @api.model
+    def cron_send_scheduled_messages(self):
+        """Cron job to send scheduled WhatsApp messages."""
+        now = datetime.now()
+        print(now)
+        messages = self.search([
+            ('wa_scheduling_status', '=', 'scheduled'),
+            ('publish_date', '<=', now)
+        ])
+        for message in messages:
+            message.send_whatsapp_message()
+
+    def send_whatsapp_message(self):
+        """Send WhatsApp messages using pywhatkit"""
+        try:
+            a=0
+            for recipient in self.recipient_ids:
+                phone = recipient.phone
+                if not phone:
+                    continue  # Skip if no phone number
+
+                text = self.message.strip()
+                send_time = self.publish_date
+                hours, minutes = int(send_time.hour), int(send_time.minute)
+                print(hours, minutes)
+                print("Sending Message...")
+                minutes=minutes+a
+                a=a+1
+                # Send message using pywhatkit
+
+                kit.sendwhatmsg(phone, text, hours, (minutes+2), 10, True ,1)
+                time.sleep(5)  # Add delay to avoid spam detection
+
+            self.write({'wa_scheduling_status': 'sent'})
+            self.message_post(body="WhatsApp message successfully sent!")
+        except Exception as e:
+            self.write({'wa_scheduling_status': 'failed'})
+            self.message_post(body=f"Failed to send WhatsApp message: {str(e)}")
+
+    def action_cancel(self):
+        """Cancel a scheduled WhatsApp message"""
+        self.write({'wa_scheduling_status': 'draft'})
 
 
 class SocialInstagram(models.Model):
@@ -118,7 +229,7 @@ class SocialInstagram(models.Model):
             }
             publish_response = requests.post(publish_url, data=publish_payload)
             publish_data = publish_response.json()
-
+            print(publish_data)
 
 
             if "id" in publish_data:
@@ -201,15 +312,19 @@ class SocialFacebook(models.Model):
             self.message_post(body=f"Error scheduling Facebook post: {str(e)}")
             return False
 
-    @api.onchange('scheduled_fb_post_id')
-    def action_check_post_status(self):
-        for record in self:
-
+    @api.model
+    def crone_check_post_status(self):
+        posts = self.search([
+            ('fb_scheduling_status', '=', 'scheduled'),
+        ])
+        for record in posts:
             url = f"https://graph.facebook.com/v17.0/{record.scheduled_fb_post_id}"
-            params = {'access_token': os.getenv("ACCESS_TOKEN")}
+            params = {
+                'fields': 'id,is_published,status_type',
+                'access_token': os.getenv("ACCESS_TOKEN")}
             response = requests.get(url, params=params)
             data = response.json()
-
+            print(data)
             if 'is_published' in data and data['is_published']:
                 record.write({'fb_scheduling_status': 'published'})
 

@@ -6,27 +6,32 @@
         <field name="model">social.email</field>
         <field name="arch" type="xml">
             <form string="Email Post">
-            <sheet>
                 <header>
                         <button name="action_confirm" type="object" string="Confirm" invisible="mail_scheduling_status != 'draft'"
                             class="oe_highlight"/>
                         <button name="action_confirm" type="object" string="Re try" invisible="mail_scheduling_status != 'failed'"
                             class="oe_highlight"/>
-                        <button name="action_cancel" type="object" string="Cancel" invisible="mail_scheduling_status == 'draft' or mail_scheduling_status == 'published' or mail_scheduling_status == 'failed'"/>
-                        <field name="mail_scheduling_status" widget="statusbar" options="{'statusbar_visible': ['draft', 'scheduled', 'published', 'failed']}"/>
-                    </header>
+                        <button name="action_cancel" type="object" string="Cancel" invisible="mail_scheduling_status == 'draft' or mail_scheduling_status == 'sent' or mail_scheduling_status == 'failed'"/>
+                        <field name="mail_scheduling_status" widget="statusbar" options="{'statusbar_visible': ['draft', 'scheduled', 'sent', 'failed']}"/>
+                </header>
+                <sheet>
+            <sheet>
                 <group>
                     <group>
                         <field name="name"/>
-                        <field name="content"/>
+                        <field name="publish_date"/>
                     </group>
                     <group>
                         <field name="recipient_ids" widget="many2many_tags"/>
                         <field name="email_addresses"/>
-                        <field name="publish_date"/>
+
                     </group>
                 </group>
             </sheet>
+            <sheet>
+                <field name="content"/>
+            </sheet>
+                </sheet>
         </form>
         </field>
     </record>
@@ -42,47 +47,49 @@
         </field>
     </record>
 
-    <!-- WhatsApp View -->
-    <record id="view_social_whatsapp_form" model="ir.ui.view">
-        <field name="name">social.whatsapp.form</field>
-        <field name="model">social.whatsapp</field>
-        <field name="arch" type="xml">
-            <form string="WhatsApp Message">
-                <sheet>
-                    <header>
-                        <button name="action_confirm" type="object" string="Confirm" invisible="wa_scheduling_status != 'draft'"
-                            class="oe_highlight"/>
-                        <button name="action_confirm" type="object" string="Re try" invisible="wa_scheduling_status != 'failed'"
-                            class="oe_highlight"/>
-                        <button name="action_cancel" type="object" string="Cancel" invisible="wa_scheduling_status == 'draft' or wa_scheduling_status == 'sent' or wa_scheduling_status == 'failed'"/>
-                        <field name="wa_scheduling_status" widget="statusbar" options="{'statusbar_visible': ['draft', 'scheduled', 'sent', 'failed']}"/>
-                    </header>
+    <!-- X (Twitter) View -->
+<record id="view_social_x_form" model="ir.ui.view">
+    <field name="name">social.x.form</field>
+    <field name="model">social.x</field>
+    <field name="arch" type="xml">
+        <form string="Tweet">
+            <sheet>
+                <header>
+                    <button name="action_confirm" type="object" string="Confirm"
+                        invisible="x_scheduling_status != 'draft'" class="oe_highlight"/>
+                    <button name="action_confirm" type="object" string="Retry"
+                        invisible="x_scheduling_status != 'failed'" class="oe_highlight"/>
+                    <button name="action_cancel" type="object" string="Cancel"
+                        invisible="x_scheduling_status == 'draft' or x_scheduling_status == 'published' or x_scheduling_status == 'failed'"/>
+                    <field name="x_scheduling_status" widget="statusbar" options="{'statusbar_visible': ['draft', 'scheduled', 'published', 'failed']}"/>
+                </header>
+                <group>
                     <group>
-                        <group>
-                            <field name="name"/>
-                            <field name="message"/>
-                            <field name="publish_date"/>
-                        </group>
-                        <group>
-                            <field name="recipient_ids" widget="many2many_tags"/>
-                            <field name="phone_numbers"/>
-                        </group>
+                        <field name="name"/>
+                        <field name="caption"/>
+                        <field name="publish_date"/>
                     </group>
-                </sheet>
-            </form>
-        </field>
-    </record>
+                    <group>
+                        <field name="scheduled_tweet_id" readonly="1"/>
+                        <field name="image_ids" widget="many2many_tags"/>
+                    </group>
+                </group>
+            </sheet>
+        </form>
+    </field>
+</record>
 
-    <record id="view_social_whatsapp_tree" model="ir.ui.view">
-        <field name="name">social.whatsapp.tree</field>
-        <field name="model">social.whatsapp</field>
-        <field name="arch" type="xml">
-            <tree string="WhatsApp Messages">
-                <field name="name"/>
-                <field name="publish_date"/>
-            </tree>
-        </field>
-    </record>
+<record id="view_social_x_tree" model="ir.ui.view">
+    <field name="name">social.x.tree</field>
+    <field name="model">social.x</field>
+    <field name="arch" type="xml">
+        <tree string="Tweets">
+            <field name="name"/>
+            <field name="publish_date"/>
+            <field name="x_scheduling_status"/>
+        </tree>
+    </field>
+</record>
 
     <!-- Instagram View -->
     <record id="view_social_instagram_form" model="ir.ui.view">
@@ -101,7 +108,7 @@
                     </header>
                     <group>
                         <field name="name"/>
-<!--                        <field name="image"/>-->
+                        <field name="image_ids" widget="many2many_tags"/>
                         <field name="caption"/>
                         <field name="publish_date"/>
                     </group>
@@ -138,6 +145,7 @@
                     </header>
                     <group>
                         <field name="name"/>
+                        <field name="image_ids" widget="many2many_tags"/>
                         <field name="content"/>
                         <field name="publish_date"/>
                     </group>
@@ -157,7 +165,7 @@
         </field>
     </record>
 
-    <record id="check_publish_date_cron" model="ir.cron">
+    <record id="check_publish_date_cron_insta" model="ir.cron">
         <field name="name">Instagram: Check publish date</field>
         <field name="model_id" ref="model_social_instagram"/>
         <field name="state">code</field>
@@ -168,22 +176,23 @@
     </record>
 
 
-    <record id="check_publish_date_cron" model="ir.cron">
-        <field name="name">Whatsapp: Check publish date</field>
-        <field name="model_id" ref="model_social_whatsapp"/>
+    <record id="check_publish_date_cron_x" model="ir.cron">
+        <field name="name">Twitter (X): Check publish date</field>
+        <field name="model_id" ref="model_social_x"/>
         <field name="state">code</field>
-        <field name="code">model.cron_send_scheduled_messages()</field>
+        <field name="code">model.cron_send_scheduled_x_posts()</field>
         <field name="interval_number">1</field>
         <field name="interval_type">minutes</field>
         <field name="numbercall">-1</field>
     </record>
 
 
+
     <record id="check_publish_state_cron" model="ir.cron">
         <field name="name">Facebook: Check publish state</field>
         <field name="model_id" ref="model_social_facebook"/>
         <field name="state">code</field>
-        <field name="code">model.crone_check_post_status()</field>
+        <field name="code">model.cron_publish_scheduled_posts()</field>
         <field name="interval_number">1</field>
         <field name="interval_type">minutes</field>
         <field name="numbercall">-1</field>
@@ -193,7 +202,7 @@
         <field name="name">Email: Check publish state</field>
         <field name="model_id" ref="model_social_email"/>
         <field name="state">code</field>
-        <field name="code">model.cron_send_scheduled_emails()</field>
+        <field name="code">model.cron_check_status_emails()</field>
         <field name="interval_number">1</field>
         <field name="interval_type">minutes</field>
         <field name="numbercall">-1</field>

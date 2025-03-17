@@ -1,3 +1,5 @@
+from dateutil.utils import today
+
 from odoo.exceptions import UserError
 
 from odoo import models, fields, api
@@ -14,6 +16,8 @@ class MarketingCampaign(models.Model):
     _name = "marketing.campaign"
     _description = "Marketing Campaign"
     _inherit = ["mail.thread"]
+
+
 
     company_id = fields.Many2one('res.company', string='Company', index=True, default=lambda self: self.env.company)
 
@@ -41,10 +45,11 @@ class MarketingCampaign(models.Model):
     post_frequency = fields.Char(string="Post Frequency",compute="_compute_post_frequency", store=True, default="")
     context = fields.Text(string="Context")
     tag_ids = fields.Many2many('prompt.tag', string='Tags')
+    image_ids = fields.Many2many('image.model', string='Images')
 
 
     email_ids = fields.One2many('social.email', 'campaign_id', string="Emails")
-    whatsapp_ids = fields.One2many('social.whatsapp', 'campaign_id', string="WhatsApp Messages")
+    x_ids = fields.One2many('social.x', 'campaign_id', string="Tweets")
     instagram_ids = fields.One2many('social.instagram', 'campaign_id', string="Instagram Posts")
     facebook_ids = fields.One2many('social.facebook', 'campaign_id', string="Facebook Posts")
 
@@ -60,27 +65,125 @@ class MarketingCampaign(models.Model):
         store=True
     )
 
+    def action_set_running(self):
+        """Change campaign status to 'running' and validate dates."""
+        for record in self:
+            # Validate that the campaign has a start and end date
+            if not record.start_date or not record.end_date:
+                raise UserError("A campaign must have both start and end dates before it can be set to running.")
+
+            # Check if there's at least one content item
+            has_content = any([
+                record.email_ids,
+                record.x_ids,
+                record.instagram_ids,
+                record.facebook_ids
+            ])
+
+            if not has_content:
+                raise UserError("Cannot start a campaign without any content. Please generate at least one post.")
+
+            record.status = 'running'
+            record.message_post(body="Campaign status changed to 'Running'")
+
+    def action_set_completed(self):
+        """Mark the campaign as completed."""
+        for record in self:
+            # Only running campaigns can be completed
+            if record.status != 'running':
+                raise UserError("Only running campaigns can be marked as completed.")
+
+            record.status = 'completed'
+            record.message_post(body="Campaign marked as 'Completed'")
+
+    def action_set_canceled(self):
+        """Cancel the campaign."""
+        for record in self:
+            # Can't cancel completed campaigns
+            if record.status == 'completed':
+                raise UserError("Completed campaigns cannot be canceled.")
+
+            record.status = 'canceled'
+            record.message_post(body="Campaign was canceled.")
+
+    def action_reset_to_draft(self):
+        """Reset campaign to draft status."""
+        for record in self:
+            # Completed campaigns can't be reset
+            if record.status == 'completed':
+                raise UserError("Completed campaigns cannot be reset to draft.")
+
+            record.status = 'draft'
+            record.message_post(body="Campaign reset to 'Draft' status.")
+
+    @api.model
+    def create(self, vals):
+        """Override create to ensure new campaigns start in draft status."""
+        if 'status' not in vals:
+            vals['status'] = 'draft'
+        return super(MarketingCampaign, self).create(vals)
+
+    def get_status_info(self):
+        """Get information about the current status of the campaign."""
+        self.ensure_one()
+
+        status_info = {
+            'draft': {
+                'description': 'Campaign is in preparation',
+                'next_actions': ['Set to Running', 'Cancel'],
+                'color': 'gray'
+            },
+            'running': {
+                'description': 'Campaign is currently active',
+                'next_actions': ['Mark as Completed', 'Cancel'],
+                'color': 'green'
+            },
+            'completed': {
+                'description': 'Campaign has successfully finished',
+                'next_actions': [],  # No further actions for completed campaigns
+                'color': 'blue'
+            },
+            'canceled': {
+                'description': 'Campaign was terminated before completion',
+                'next_actions': ['Reset to Draft'],
+                'color': 'red'
+            }
+        }
+
+        return status_info.get(self.status, {})
+
+    def can_generate_content(self):
+        """Check if content can be generated for this campaign."""
+        self.ensure_one()
+        return self.status in ['draft', 'running']
+
+    def action_confirm(self):
+        """Confirm the campaign by setting it to running."""
+        return self.action_set_running()
+
+
     @api.onchange('start_date','end_date')
     def check_date_validity(self):
         s = self.start_date
         e = self.end_date
-        if e<=s :
-            raise UserError("The end date must be greater than the start date")
-        if s<date.today() :
-            raise UserError("The start date must be greater than todays date")
+        if isinstance(s, date) and isinstance(e, date):
+            if e<=s :
+                raise UserError("The end date must be greater than the start date")
+            if s<date.today() :
+                raise UserError("The start date must be greater than todays date")
 
-    @api.depends('start_date','end_date','email_ids', 'whatsapp_ids', 'instagram_ids', 'facebook_ids')
+    @api.depends('start_date','end_date','email_ids', 'x_ids', 'instagram_ids', 'facebook_ids')
     def _compute_post_frequency(self):
         for record in self:
-            s=self.start_date
-            e=self.end_date
+            s=record.start_date
+            e=record.end_date
             if isinstance(s, date) and isinstance(e, date):
                 num_weeks = (e - s).days / 7
             else:
                 num_weeks = 0
             total_posts = sum([
                 len(record.email_ids),
-                len(record.whatsapp_ids),
+                len(record.x_ids),
                 len(record.instagram_ids),
                 len(record.facebook_ids)
             ])
@@ -94,9 +197,6 @@ class MarketingCampaign(models.Model):
         for record in self:
             record.optional_product_tags = record.optional_product_ids
 
-    def action_confirm(self):
-        print("Campaign confirmed!")
-
     def get_email_publish_dates(self):
         self.ensure_one()
 
@@ -109,6 +209,7 @@ class MarketingCampaign(models.Model):
         publish_dates_str = [dt.strftime("%Y-%m-%d %H:%M:%S") for dt in publish_dates if dt]
 
         return publish_dates_str
+
     def get_instagram_publish_dates(self):
 
         self.ensure_one()
@@ -122,10 +223,11 @@ class MarketingCampaign(models.Model):
         publish_dates_str = [dt.strftime("%Y-%m-%d %H:%M:%S") for dt in publish_dates if dt]
 
         return publish_dates_str
-    def get_whatsapp_publish_dates(self):
+
+    def get_x_publish_dates(self):
         self.ensure_one()
 
-        email_records = self.env['social.whatsapp'].search([
+        email_records = self.env['social.x'].search([
             ('campaign_id', '=', self.id)
         ])
         publish_dates = email_records.mapped('publish_date')
@@ -133,6 +235,7 @@ class MarketingCampaign(models.Model):
         publish_dates_str = [dt.strftime("%Y-%m-%d %H:%M:%S") for dt in publish_dates if dt]
 
         return publish_dates_str
+
     def get_facebook_publish_dates(self):
         self.ensure_one()
 
@@ -149,6 +252,8 @@ class MarketingCampaign(models.Model):
 
         company_name = self.company_id.name if self.company_id else "our company"
 
+        images = ", ".join(self.image_ids.mapped('urldes')) if self.image_ids else "no images"
+
         # Extract product tags or set a default
         product_tags = ", ".join(
             self.optional_product_tags.mapped('name')) if self.optional_product_tags else "products"
@@ -160,50 +265,64 @@ class MarketingCampaign(models.Model):
         start_date1 = self.start_date
         end_date1 = self.end_date
 
+        #Todays Date
+        today = date.today()
+        print(today)
+
         # Get email publish dates and format as a string
         date_with_content_list = self.get_email_publish_dates()
         date_with_content_str = ", ".join(date_with_content_list) if date_with_content_list else "None"
         print(date_with_content_str)
         # Define the AI prompt
         prompt_template = f"""
-        You are an AI Email Marketing Assistant. Your task is to generate a JSON-formatted marketing email that is engaging, persuasive, and aligned with the given campaign details.
+        You are an AI Email Marketing Assistant. Your task is to generate a JSON-formatted marketing email with HTML content that is engaging, persuasive, and aligned with the given campaign details.
 
-        **Campaign Details:**
-        - **Start Date:** {start_date1}
-        - **End Date:** {end_date1}
-        - **Context:** {context}
-        - **Tags:** {tags}
-        - **Company Name:** {company_name}
-        - **Product Tags:** {product_tags}
-        - **Content Strategy:** {content_strategy}
-        - **Avoid Posting On:** {date_with_content_str}
+    **Campaign Details:**
+    - **Start Date:** {start_date1}
+    - **End Date:** {end_date1}
+    - **Context:** {context}
+    - **Tags:** {tags}
+    - **Company Name:** {company_name}
+    - **Product Tags:** {product_tags}
+    - **Content Strategy:** {content_strategy}
+    - **Avoid Posting On:** {date_with_content_str}
+    - **The Only Images**: {images}
+    - **The Date of Today:** {today}
 
-        **Instructions:**
-        - Craft a **compelling subject line** that encourages email opens.
-        - Choose a **posting date and time** that maximizes audience engagement. Format: `YYYY-MM-DD HH:MM:SS`.
-        - Personalize the **greeting** to make the email feel tailored to the recipient.
-        - Write an engaging **introduction** that captures attention and sets the stage.
-        - Highlight key **details**, including features, benefits, and unique selling points of the product or service.
-        - Include a **strong call-to-action (CTA)** that motivates the recipient to take the next step.
-        - End with a **friendly and professional closing** that reinforces brand credibility.
+    **Instructions:**
+    - Craft a **compelling subject line** that encourages email opens.
+    - Choose a **posting date and time** that maximizes audience engagement. Format: `YYYY-MM-DD HH:MM:SS`.
+    - Design a **responsive HTML email template** with appropriate styling.
+    - Include a professional header with the company name or logo placeholder.
+    - Personalize the **greeting** using `{{name}}` as a placeholder (e.g., "Dear {{name}},").
+    - Write an engaging **introduction** that captures attention and sets the stage.
+    - Highlight key **details**, including features, benefits, and unique selling points of the product or service.
+    - Include a **strong call-to-action (CTA)** with an attractive button.
+    - End with a **friendly and professional closing** that reinforces brand credibility.
+    - Add a footer with unsubscribe option and company details.
 
-        **Expected JSON Output Format:**
-        ```json
-        {{
-            "subject_line": "<A compelling subject line>",
-            "date_of_post": "<YYYY-MM-DD HH:MM:SS>",
-            "greeting": "<A personalized greeting>",
-            "introduction": "<An engaging introduction>",
-            "details": "<Key features, benefits, and unique selling points>",
-            "call_to_action": "<A strong call-to-action>",
-            "closing": "<A professional and friendly closing>"
-        }}
-        ```
+    **Expected JSON Output Format:**
+    ```json
+    {{
+        "subject_line": "<A compelling subject line>",
+        "date_of_post": "<YYYY-MM-DD HH:MM:SS>",
+        "html_content": "<Complete HTML email content with inline CSS styling>"
+    }}
+    ```
 
-        **Requirements:**
-        - Ensure the response is a **valid JSON object** with no extraneous text or formatting.
-        - Follow a **persuasive marketing tone** tailored to the provided context and audience.
-        - Optimize for readability, engagement, and conversion.
+    **HTML Requirements:**
+    - Create a clean, professional design with responsive layout
+    - Use inline CSS for styling (no external stylesheets)
+    - Ensure compatibility with major email clients
+    - Include appropriate spacing, colors, and formatting
+    - Create visually distinct sections for introduction, details, and CTA
+    - Use appropriate HTML tags for semantic structure
+    - Include placeholder text for images with descriptive alt text
+
+    **Marketing Requirements:**
+    - Follow a **persuasive marketing tone** tailored to the provided context and audience
+    - Optimize for readability, engagement, and conversion
+    - Ensure the response is a **valid JSON object** with no extraneous text or formatting
         """
 
         return prompt_template
@@ -234,6 +353,7 @@ class MarketingCampaign(models.Model):
             # Generate content using the AI model
             gen = genai.GenerativeModel('gemini-1.5-flash')
             response = gen.generate_content(email_prompt)
+            print(response)
             try:
                 r=self.extract_json_content(response.text)
                 email_data = json.loads(r)
@@ -248,11 +368,7 @@ class MarketingCampaign(models.Model):
                 'name': email_data.get("subject_line",""),
                 'publish_date':date_object,
                 'content': f"""
-                    {email_data.get("greeting", "")}
-                    {email_data.get("introduction", "")}
-                    {email_data.get("details", "")}
-                    {email_data.get("call_to_action", "")}
-                    {email_data.get("closing", "")}
+                    {email_data.get("html_content", "")}
                 """.strip(),  # Combine all parts of the email content
             })
             print(self.get_email_publish_dates())
@@ -270,7 +386,7 @@ class MarketingCampaign(models.Model):
         # Get campaign start and end dates
         start_date1 = self.start_date
         end_date1 = self.end_date
-
+        today=date.today()
         date_with_content_list = self.get_facebook_publish_dates()
         date_with_content_str = ", ".join(date_with_content_list) if date_with_content_list else "None"
         print(date_with_content_str)
@@ -286,6 +402,7 @@ class MarketingCampaign(models.Model):
         - **Product Tags:** {product_tags}
         - **Content Strategy:** {content_strategy}
         - **Avoid Posting On:** {date_with_content_str}
+        - **The Date of Today:** {today}
 
         ### **Post Requirements**
         - **Headline:** Craft an attention-grabbing, scroll-stopping headline.
@@ -350,7 +467,6 @@ class MarketingCampaign(models.Model):
                                 {facebook_data.get("body_text", "")}
                                 {facebook_data.get("call_to_action", "")}
                                 {facebook_data.get("hashtags", "")}
-                                {facebook_data.get("media_suggestion", "")}
                             """.strip(),  # Combine all parts of the email content
             })
 
@@ -369,7 +485,7 @@ class MarketingCampaign(models.Model):
         # Get campaign start and end dates
         start_date1 = self.start_date
         end_date1 = self.end_date
-
+        today = date.today()
         # Get restricted posting dates
         date_with_content_list = self.get_instagram_publish_dates()
         date_with_content_str = ", ".join(date_with_content_list) if date_with_content_list else "None"
@@ -386,6 +502,7 @@ class MarketingCampaign(models.Model):
         - **Product Tags:** {product_tags}
         - **Content Strategy:** {content_strategy}
         - **Avoid Posting On:** {date_with_content_str}
+        - **The Date of Today:** {today}
 
         ### **Post Requirements**
         - **Caption:** Write a compelling and engaging caption with a mix of storytelling and brand messaging.
@@ -403,6 +520,7 @@ class MarketingCampaign(models.Model):
 
         ```json
         {{
+            "headline": "<Catchy headline>",
             "caption": "<Engaging caption with emojis>",
             "call_to_action": "<Clear CTA>",
             "hashtags": "<Relevant hashtags>",
@@ -441,13 +559,12 @@ class MarketingCampaign(models.Model):
             date_object = datetime.strptime(instagram_data.get("suggested_post_date"), format)
             self.env['social.instagram'].create({
                 'campaign_id': self.id,
-                'name': instagram_data.get("", ""),
+                'name': instagram_data.get("headline", ""),
                 'publish_date': date_object,
                 'caption': f"""
                                 {instagram_data.get("caption", "")}
                                 {instagram_data.get("call_to_action", "")}
                                 {instagram_data.get("hashtags", "")}
-                                {instagram_data.get("media_suggestion", "")}
                             """.strip(),  # Combine all parts of the email content
             })
 
@@ -456,8 +573,8 @@ class MarketingCampaign(models.Model):
 
         self.message_post(body="New AI-generated Facebook content has been created successfully.")
 
-    def generate_whatsapp_prompt(self, context, tags):
-        """Generate a structured and engaging WhatsApp marketing message prompt for AI."""
+    def generate_x_prompt(self, context, tags):
+        """Generate a structured and engaging Twitter (X) post prompt for AI."""
 
         # Extract company details safely
         company_name = self.company_id.name if self.company_id else "our company"
@@ -470,12 +587,14 @@ class MarketingCampaign(models.Model):
         end_date1 = self.end_date
 
         # Get restricted posting dates
-        date_with_content_list = self.get_whatsapp_publish_dates()
+        date_with_content_list = self.get_x_publish_dates()
         date_with_content_str = ", ".join(date_with_content_list) if date_with_content_list else "None"
+        today = date.today()
         print(date_with_content_str)
+
         # Define the AI prompt
         prompt_template = f"""
-        You are a **WhatsApp Marketing Assistant**. Your task is to create a **highly engaging WhatsApp message** that aligns with the marketing campaign details and encourages user interaction.
+        You are a **Twitter (X) Marketing Assistant**. Your task is to create a **highly engaging tweet** that aligns with the marketing campaign details and encourages user engagement.
 
         ### **Campaign Details**
         - **Start Date:** {start_date1}
@@ -485,27 +604,23 @@ class MarketingCampaign(models.Model):
         - **Company Name:** {company_name}
         - **Product Tags:** {product_tags}
         - **Content Strategy:** {content_strategy}
-        - **Avoid Sending On:** {date_with_content_str}
+        - **Avoid Posting On:** {date_with_content_str}
+        - **The Date of Today:** {today}
 
-        ### **Message Requirements**
-        - **Greeting:** Start with a warm and friendly greeting (e.g., "Hey there! 😊" or "Hello [First Name]!").
-        - **Body Text:** Create a short, engaging message with a mix of text and emojis 🚀🔥 to make it appealing.
-        - **Call-to-Action (CTA):** Encourage immediate action (e.g., "Click here to learn more," "Reply with 'YES' to get started").
-        - **Closing:** End with a personal and friendly closing (e.g., "Looking forward to hearing from you!" or "Talk soon!").
+        ### **Tweet Requirements**
+        - **Text Length:** Ensure the tweet is within **280 characters**.
+        - **Emojis & Hashtags:** Use a mix of engaging emojis (🔥🚀) and relevant hashtags.
+        - **Call-to-Action (CTA):** Encourage user interaction (e.g., "Retweet if you agree!", "Drop your thoughts below 👇").
+        - **Media:** If applicable, suggest an image or GIF.
+        - **Tone & Style:** Ensure the tweet is **witty, concise, and brand-aligned**.
 
-        ### **Tone & Style**
-        - Ensure the **tone matches the brand identity** of {company_name}.
-        - Follow the **{content_strategy}** strategy for consistency across campaigns.
-        - Make the message **conversational, engaging, and mobile-friendly**.
-
-        **Please return the WhatsApp message in the following structured JSON format:**
+        **Please return the tweet in the following structured JSON format:**
 
         ```json
-        {{
-            "greeting": "<Personalized greeting>",
-            "message_body": "<Engaging message with emojis>",
-            "call_to_action": "<Clear CTA>",
-            "closing": "<Friendly closing>",
+        {{  
+            "title": "<Tweet Title>"
+            "tweet_text": "<Engaging tweet within 280 characters>",
+            "hashtags": ["#example", "#marketing"],
             "suggested_send_time": "<YYYY-MM-DD HH:MM:SS>"
         }}
         ```
@@ -515,42 +630,41 @@ class MarketingCampaign(models.Model):
 
         return prompt_template
 
-    def action_generate_whatsapp_content(self):
-        """Generate AI-powered WhatsApp content and save it as a new record."""
+    def action_generate_x_content(self):
+        """Generate AI-powered Twitter (X) content and save it as a new record."""
         GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
         genai.configure(api_key=GOOGLE_API_KEY)
 
         context = self.context
         tags = ", ".join(self.tag_ids.mapped('name'))
-        whatsapp_prompt = self.generate_whatsapp_prompt(context, tags)
+        x_prompt = self.generate_x_prompt(context, tags)
 
-        print("Generated WhatsApp Prompt:\n", whatsapp_prompt)
+        print("Generated Twitter Prompt:\n", x_prompt)
 
         try:
             gen = genai.GenerativeModel('gemini-1.5-flash')
-            response = gen.generate_content(whatsapp_prompt)
+            response = gen.generate_content(x_prompt)
+
             try:
                 r = self.extract_json_content(response.text)
-                whatsapp_data = json.loads(r)
-                print(whatsapp_data)
+                x_data = json.loads(r)
+                print(x_data)
             except json.JSONDecodeError as e:
                 print(f"JSON Decode Error: {str(e)}")
                 raise ValueError(f"Invalid JSON response from AI model: {str(e)}")
+
             format = "%Y-%m-%d %H:%M:%S"
-            date_object = datetime.strptime(whatsapp_data.get("suggested_send_time"), format)
-            self.env['social.whatsapp'].create({
+            date_object = datetime.strptime(x_data.get("suggested_send_time"), format)
+            print(date_object)
+            self.env['social.x'].create({
                 'campaign_id': self.id,
-                'name': whatsapp_data.get("", ""),
+                'name': x_data.get("title", ""),
                 'publish_date': date_object,
-                'message': f"""
-                                {whatsapp_data.get("greeting", "")}
-                                {whatsapp_data.get("message_body", "")}
-                                {whatsapp_data.get("call_to_action", "")}
-                                {whatsapp_data.get("closing", "")}
-                            """.strip(),  # Combine all parts of the email content
+                'caption': x_data.get("tweet_text", ""),
             })
 
         except Exception as e:
-            self.message_post(body=f"Error generating Facebook content: {str(e)}")
+            self.message_post(body=f"Error generating Twitter content: {str(e)}")
 
-        self.message_post(body="New AI-generated Facebook content has been created successfully.")
+        self.message_post(body="New AI-generated Twitter content has been created successfully.")
+

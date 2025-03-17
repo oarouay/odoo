@@ -16,6 +16,12 @@
               parent="menu_configuration"
               action="action_prompt_tag"/>
 
+    <menuitem id="menu_image"
+              name="Images"
+              parent="menu_configuration"
+              action="action_image_model"
+              sequence="10"/>
+
     <menuitem id="menu_prompt_social"
               name="Socials"
               parent="menu_configuration"/>
@@ -26,10 +32,10 @@
               parent="menu_prompt_social"
               action="action_social_email"/>
 
-    <menuitem id="menu_social_whatsapp"
-              name="WhatsApp"
+    <menuitem id="menu_social_x"
+              name="X"
               parent="menu_prompt_social"
-              action="action_social_whatsapp"/>
+              action="action_social_x"/>
 
     <menuitem id="menu_social_instagram"
               name="Instagram"

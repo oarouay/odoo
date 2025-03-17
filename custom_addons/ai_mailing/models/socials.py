@@ -1,15 +1,13 @@
-import smtplib
-from email.mime.text import MIMEText
-
+import json
+from requests_oauthlib import OAuth1
 from odoo import models, fields, api
 from dotenv import load_dotenv
 import os
-import time
 from datetime import datetime
 import requests
-import pywhatkit as kit
-
+from odoo.exceptions import UserError
 load_dotenv()
+
 
 class SocialEmail(models.Model):
     _name = 'social.email'
@@ -17,7 +15,7 @@ class SocialEmail(models.Model):
     _inherit = ['mail.thread']
 
     name = fields.Char(string="Email Subject", required=True)
-    content = fields.Text(string="Content")
+    content = fields.Html(string="Content")
     campaign_id = fields.Many2one('marketing.campaign', string='Campaign')
     is_published = fields.Boolean(string="Is Published", default=False)
     mail_scheduling_status = fields.Selection([
@@ -33,6 +31,7 @@ class SocialEmail(models.Model):
     )
     email_addresses = fields.Char(string="Email Addresses", compute="_compute_email_addresses", readonly=True)
     publish_date = fields.Datetime(string="Publish Date")
+    mailing_id = fields.Many2one('mailing.mailing', string='Mass Mailing', ondelete='set null')
 
     @api.depends("recipient_ids")
     def _compute_email_addresses(self):
@@ -40,128 +39,163 @@ class SocialEmail(models.Model):
             record.email_addresses = ', '.join(record.recipient_ids.mapped('email'))
 
     def action_confirm(self):
-        """Mark message as scheduled"""
-        self.write({'mail_scheduling_status': 'scheduled'})
-        self.message_post(body=f"WhatsApp message scheduled for {self.publish_date}")
+        """Mark message as scheduled and create mass mailing with personalized content."""
+        self.ensure_one()
+        # Ensure recipient_ids is a list of IDs
+        recipient_ids = self.recipient_ids.ids
+        if not recipient_ids:
+            raise UserError("No recipients selected for the email.")
+
+        # Create a mailing.mailing record
+        personalized_contents = []
+        for recipient in self.recipient_ids:
+            personalized_content = self.content.replace('{name}', recipient.name)
+            personalized_contents.append((personalized_content, recipient.id))
+
+        # Create a mailing.mailing record with the first recipient's content
+        for personalized_content in personalized_contents:
+            print(personalized_content)
+            vals = {
+                'subject': self.name,
+                'body_html': personalized_content[0] if personalized_content[0] else self.content,
+                'mailing_model_id':self.env['ir.model']._get('res.partner').id,
+                # Adjust to correct mailing model
+                'mailing_domain': [('list_ids', '=', personalized_content[1])],  # Correct the domain filter
+                'reply_to_mode': 'new',
+                'schedule_date': self.publish_date,
+                'state': 'draft',
+            }
+            mailing = self.env['mailing.mailing'].create(vals)
+            self.write({
+                'mailing_id': mailing.id,
+                'mail_scheduling_status': 'scheduled'
+            })
+
+        self.message_post(body=f"Email scheduled for {self.publish_date}")
 
     @api.model
-    def cron_send_scheduled_emails(self):
-        """Cron job to send scheduled WhatsApp messages."""
-        now = datetime.now()
+    def cron_check_status_emails(self):
+        """Cron job to send scheduled emails using mailing.mailing."""
+        now = fields.Datetime.now()
         emails = self.search([
             ('mail_scheduling_status', '=', 'scheduled'),
             ('publish_date', '<=', now)
         ])
         for email in emails:
-            email.send_email()
-
-    def send_email(self):
-        for record in self:
-            sender_email="oussamadarouay@gmail.com"
-            password=os.getenv("PASSWORD")
-
-            # Create email message
-            msg =MIMEText(self.content)
-            msg["Subject"] = self.name
-            msg["From"] = sender_email
-            msg["To"] = self.email_addresses  # Convert list to comma-separated string
-
-            emails=record.email_addresses = record.email_addresses.split(', ') if record.email_addresses else []
-
-
-            # SMTP setup and send email
             try:
-                server = smtplib.SMTP("smtp.gmail.com", 587)
-                server.starttls()  # Secure the connection
-                server.login(sender_email, password)
-                server.sendmail(sender_email,emails, msg.as_string())  # Send to multiple recipients
-                server.quit()
-                self.write({'mail_scheduling_status': 'sent'})
-                self.message_post(body="Email message successfully sent!")
+                # Put mailing in queue for sending
+                email.mailing_id.action_put_in_queue()
+                # Actually send the emails
+                email.mailing_id.action_send_mail()
+                email.write({'mail_scheduling_status': 'sent'})
+                email.message_post(body="Email message queued for sending via mailing.mailing!")
             except Exception as e:
-                self.write({'mail_scheduling_status': 'failed'})
-                self.message_post(body=f"Failed to send Email message: {str(e)}")
+                email.write({'mail_scheduling_status': 'failed'})
+                email.message_post(body=f"Failed to send Email: {str(e)}")
 
     def action_cancel(self):
-        """Cancel a scheduled WhatsApp message"""
+        """Cancel a scheduled email"""
+        record = self.env['mailing.mailing'].browse(self.mailing_id.id)
+        record.unlink()
         self.write({'mail_scheduling_status': 'draft'})
+        self.message_post(body="Email scheduling cancelled")
 
-class SocialWhatsApp(models.Model):
-    _name = 'social.whatsapp'
-    _description = 'Social WhatsApp Message'
+class SocialX(models.Model):
+    _name = "social.x"
+    _description = "X (Twitter) Posts"
     _inherit = ['mail.thread']
 
-    name = fields.Char(string="Message Title", required=True)
-    message = fields.Text(string="Message")
-    is_published = fields.Boolean(string="Is Published", default=False)
+    name = fields.Char(string="Title")
     campaign_id = fields.Many2one('marketing.campaign', string='Campaign')
-    recipient_ids = fields.Many2many(
-        'res.partner',
-        string="Recipients",
-        domain="[('phone', '!=', False)]"
-    )
-    phone_numbers = fields.Char(string="Phone Numbers", compute="_compute_phone_numbers", readonly=True)
+    is_published = fields.Boolean(string="Is Published", default=False)
+    caption = fields.Text(string="Caption")
     publish_date = fields.Datetime(string="Publish Date")
-    wa_scheduling_status = fields.Selection([
+    image_ids = fields.Many2many('image.model', string='Images')
+
+    # ID for the tweet
+    scheduled_tweet_id = fields.Char(string="Tweet ID", help="ID of the scheduled tweet on X")
+    x_scheduling_status = fields.Selection([
         ('draft', 'Draft'),
-        ('scheduled', 'Scheduled for Sending'),
-        ('sent', 'Sent'),
-        ('failed', 'Sending Failed')
+        ('scheduled', 'Scheduled on X'),
+        ('published', 'Published'),
+        ('failed', 'Scheduling Failed')
     ], string="Scheduling Status", default='draft')
-    @api.depends("recipient_ids")
-    def _compute_phone_numbers(self):
-        for record in self:
-            record.phone_numbers = ', '.join(record.recipient_ids.mapped('phone'))
 
     def action_confirm(self):
-        """Mark message as scheduled"""
-        # self.write({'wa_scheduling_status': 'scheduled'})
-        # self.message_post(body=f"WhatsApp message scheduled for {self.publish_date}")
-        self.send_whatsapp_message()
+        """Mark tweet as scheduled to be processed by cron"""
+        self.write({'x_scheduling_status': 'scheduled'})
+        self.message_post(body=f"Tweet scheduled for {self.publish_date}")
 
     @api.model
-    def cron_send_scheduled_messages(self):
-        """Cron job to send scheduled WhatsApp messages."""
-        now = datetime.now()
+    def cron_send_scheduled_x_posts(self):
+        """Cron job to publish scheduled tweets"""
+        now = datetime.utcnow()
         print(now)
-        messages = self.search([
-            ('wa_scheduling_status', '=', 'scheduled'),
-            ('publish_date', '<=', now)
+        posts = self.search([
+            ('x_scheduling_status', '=', 'scheduled'),
+            ('publish_date', '<=', now)  # Fetch posts that are due for publishing
         ])
-        for message in messages:
-            message.send_whatsapp_message()
+        for post in posts:
+            post.schedule_tweet()  # Publish each post
 
-    def send_whatsapp_message(self):
-        """Send WhatsApp messages using pywhatkit"""
+    def schedule_tweet(self):
+        """Create and publish a tweet with or without images"""
         try:
-            a=0
-            for recipient in self.recipient_ids:
-                phone = recipient.phone
-                if not phone:
-                    continue  # Skip if no phone number
+            if self.scheduled_tweet_id:
+                return  # Already processed
 
-                text = self.message.strip()
-                send_time = self.publish_date
-                hours, minutes = int(send_time.hour), int(send_time.minute)
-                print(hours, minutes)
-                print("Sending Message...")
-                minutes=minutes+a
-                a=a+1
-                # Send message using pywhatkit
+            tweet_text = f"{self.name}\n\n{self.caption}"
 
-                kit.sendwhatmsg(phone, text, hours, (minutes+2), 10, True ,1)
-                time.sleep(5)  # Add delay to avoid spam detection
+            # OAuth 1.0a Authentication
+            auth = OAuth1(
+                os.getenv("CUSTOMER_KEY"),
+                os.getenv("CUSTOMER_KEY_SECRET"),
+                os.getenv("X_ACCESS_TOKEN"),
+                os.getenv("X_ACCESS_TOKEN_SECRET")
+            )
 
-            self.write({'wa_scheduling_status': 'sent'})
-            self.message_post(body="WhatsApp message successfully sent!")
+            headers = {"Content-Type": "application/json"}
+            media_ids = []
+
+            if self.image_ids:
+                for image in self.image_ids:
+                    try:
+                        image_content = requests.get(image.url).content
+                        media_url = "https://upload.twitter.com/1.1/media/upload.json"
+                        files = {'media': ('image.jpg', image_content, 'image/jpeg')}
+                        media_response = requests.post(media_url, files=files, auth=auth)
+                        media_data = media_response.json()
+
+                        if "media_id_string" in media_data:
+                            media_ids.append(media_data["media_id_string"])
+                        else:
+                            self.message_post(body=f"Warning: Failed to upload image: {media_data}")
+                    except Exception as img_err:
+                        self.message_post(body=f"Error uploading image: {str(img_err)}")
+
+            # Prepare payload
+            payload = {"text": tweet_text}
+            if media_ids:
+                payload["media"] = {"media_ids": media_ids}
+
+            api_url = "https://api.twitter.com/2/tweets"
+            response = requests.post(api_url, json=payload, headers=headers, auth=auth)
+            response_data = response.json()
+
+            if "data" in response_data and "id" in response_data["data"]:
+                self.write({'scheduled_tweet_id': response_data["data"]["id"], 'x_scheduling_status': 'published'})
+                self.message_post(body=f"Tweet{' with images' if media_ids else ''} successfully published!")
+            else:
+                raise Exception(response_data.get('errors', [{}])[0].get('message', 'Unknown error'))
+
         except Exception as e:
-            self.write({'wa_scheduling_status': 'failed'})
-            self.message_post(body=f"Failed to send WhatsApp message: {str(e)}")
+            self.write({'x_scheduling_status': 'failed'})
+            self.message_post(body=f"Failed to publish tweet: {str(e)}")
 
     def action_cancel(self):
-        """Cancel a scheduled WhatsApp message"""
-        self.write({'wa_scheduling_status': 'draft'})
-
+        """Reset tweet status to draft"""
+        for record in self:
+            record.write({'x_scheduling_status': 'draft'})
 
 class SocialInstagram(models.Model):
     _name = "social.instagram"
@@ -170,11 +204,10 @@ class SocialInstagram(models.Model):
 
     name = fields.Char(string="Title")
     campaign_id = fields.Many2one('marketing.campaign', string='Campaign')
-    image = fields.Char(string="Image url")
     is_published = fields.Boolean(string="Is Published", default=False)
     caption = fields.Text(string="Caption")
     publish_date = fields.Datetime(string="Publish Date")
-
+    image_ids = fields.Many2many('image.model', string='Images',required=True)
     #id for the post
     scheduled_ig_post_id = fields.Char(string="Instagram Post ID", help="ID of the scheduled post on Instagram")
     ig_scheduling_status = fields.Selection([
@@ -202,41 +235,110 @@ class SocialInstagram(models.Model):
             post.schedule_instagram_post() #after filtering all the posts that needs to be posted nhabtohom taw
 
     def schedule_instagram_post(self):
-        """Create Instagram post and publish"""
-        print("Instagram post scheduled")
+        """Create an Instagram post and publish with either a single image or multiple images (carousel post)."""
+        print("Instagram post scheduling started")
         try:
             if self.scheduled_ig_post_id:
                 return  # Already processed
 
-            graph_api_url = f"https://graph.facebook.com/v22.0/{os.getenv('INSTA_ID')}/media"
-            image_url = "https://raw.githubusercontent.com/oarouay/oarouay.github.io/main/oussama.png"
-            payload = {
-                'caption': f"{self.name}\n\n{self.caption}",
-                'image_url': image_url,
-                'access_token': os.getenv("IG_ACCESS_TOKEN")
-            }
-            response = requests.post(graph_api_url, data=payload)
-            response_data = response.json()
+            # Ensure there are images in the post
+            if not self.image_ids:
+                raise Exception("No images provided for the Instagram post.")
 
-            if "id" not in response_data:
-                raise Exception(response_data.get('error', {}).get('message', 'Unknown error'))
+            access_token = os.getenv("IG_ACCESS_TOKEN")
+            insta_id = os.getenv("INSTA_ID")
 
-            container_id = response_data["id"]
-            publish_url = f"https://graph.facebook.com/v22.0/{os.getenv('INSTA_ID')}/media_publish"
-            publish_payload = {
-                'creation_id': container_id,
-                'access_token': os.getenv("IG_ACCESS_TOKEN")
-            }
-            publish_response = requests.post(publish_url, data=publish_payload)
-            publish_data = publish_response.json()
-            print(publish_data)
+            if len(self.image_ids) == 1:
+                # Single image post
+                image_url = self.image_ids[0].url
+                graph_api_url = f"https://graph.facebook.com/v22.0/{insta_id}/media"
+                payload = {
+                    'image_url': image_url,
+                    'caption': f"{self.name}\n\n{self.caption}",
+                    'access_token': access_token
+                }
 
+                response = requests.post(graph_api_url, data=payload)
+                response_data = response.json()
+                print("Single image uploaded: ", response_data)
 
-            if "id" in publish_data:
-                self.write({'scheduled_ig_post_id': publish_data['id'], 'ig_scheduling_status': 'published'})
-                self.message_post(body="Instagram post successfully published!")
+                if "id" not in response_data:
+                    raise Exception(
+                        f"Error uploading image: {response_data.get('error', {}).get('message', 'Unknown error')}")
+
+                # Publish the single image
+                publish_url = f"https://graph.facebook.com/v22.0/{insta_id}/media_publish"
+                publish_payload = {
+                    'creation_id': response_data['id'],
+                    'access_token': access_token
+                }
+
+                publish_response = requests.post(publish_url, data=publish_payload)
+                publish_data = publish_response.json()
+                print("Single image published: ", publish_data)
+
+                if "id" in publish_data:
+                    self.write({'scheduled_ig_post_id': publish_data['id'], 'ig_scheduling_status': 'published'})
+                    self.message_post(body="Instagram single image post successfully published!")
+                else:
+                    raise Exception(publish_data.get('error', {}).get('message', 'Unknown error'))
+
             else:
-                raise Exception(publish_data.get('error', {}).get('message', 'Unknown error'))
+                # Carousel post
+                media_ids = []
+                for image in self.image_ids:
+                    image_url = image.url
+                    graph_api_url = f"https://graph.facebook.com/v22.0/{insta_id}/media"
+                    payload = {
+                        'media_type': 'IMAGE',
+                        'image_url': image_url,
+                        'is_carousel_item': 'true',
+                        'access_token': access_token
+                    }
+
+                    response = requests.post(graph_api_url, data=payload)
+                    response_data = response.json()
+                    print("Images uploaded: ", response_data)
+
+                    if "id" not in response_data:
+                        raise Exception(
+                            f"Error uploading image: {response_data.get('error', {}).get('message', 'Unknown error')}")
+
+                    media_ids.append(response_data["id"])
+
+                # Create a media container (carousel)
+                container_url = f"https://graph.facebook.com/v22.0/{insta_id}/media"
+                container_payload = {
+                    'media_type': 'CAROUSEL',
+                    'caption': f"{self.name}\n\n{self.caption}",
+                    'children': ",".join(media_ids),
+                    'access_token': access_token
+                }
+
+                container_response = requests.post(container_url, data=container_payload)
+                container_data = container_response.json()
+                print("Carousel container created: ", container_data)
+
+                if "id" not in container_data:
+                    raise Exception(
+                        f"Error creating media container: {container_data.get('error', {}).get('message', 'Unknown error')}")
+
+                # Publish the carousel post
+                publish_url = f"https://graph.facebook.com/v22.0/{insta_id}/media_publish"
+                publish_payload = {
+                    'creation_id': container_data['id'],
+                    'access_token': access_token
+                }
+
+                publish_response = requests.post(publish_url, data=publish_payload)
+                publish_data = publish_response.json()
+                print("Carousel published: ", publish_data)
+
+                if "id" in publish_data:
+                    self.write({'scheduled_ig_post_id': publish_data['id'], 'ig_scheduling_status': 'published'})
+                    self.message_post(body="Instagram carousel post successfully published!")
+                else:
+                    raise Exception(publish_data.get('error', {}).get('message', 'Unknown error'))
 
         except Exception as e:
             self.write({'ig_scheduling_status': 'failed'})
@@ -245,6 +347,7 @@ class SocialInstagram(models.Model):
     def action_cancel(self):
         for record in self:
             record.write({'ig_scheduling_status': 'draft'})
+
 
 class SocialFacebook(models.Model):
     _name = "social.facebook"
@@ -256,6 +359,7 @@ class SocialFacebook(models.Model):
     content = fields.Text(string="Content")
     publish_date = fields.Datetime(string="Publish Date")
     is_published = fields.Boolean(string="Is Published", default=False)
+    image_ids = fields.Many2many('image.model', string='Images', required=True)
     scheduled_fb_post_id = fields.Char(string="Facebook Post ID", help="ID of the scheduled post on Facebook")
     fb_scheduling_status = fields.Selection([
         ('draft', 'Draft'),
@@ -265,91 +369,99 @@ class SocialFacebook(models.Model):
     ], string="Scheduling Status", default='draft')
 
     def action_confirm(self):
-        for record in self:
-            self.schedule_facebook_post(record,record.publish_date)
+        """Mark post as scheduled to be processed by cron"""
+        self.write({'fb_scheduling_status': 'scheduled'})
+        self.message_post(body=f"Facebook post scheduled for {self.publish_date}")
 
-    def schedule_facebook_post(self, post_record, scheduled_date):
+    @api.model
+    def cron_publish_scheduled_posts(self):
+        """Cron job to publish posts that are due"""
+        now = datetime.utcnow()
+        posts = self.search([
+            ('fb_scheduling_status', '=', 'scheduled'),
+            ('publish_date', '<=', now)  # Find posts where the publish date is in the past or now
+        ])
+        for post in posts:
+            post.schedule_facebook_post()
 
+    def schedule_facebook_post(self):
+        """Create Facebook post with multiple images using feed endpoint"""
         try:
-            # Facebook Graph API endpoint for scheduled posts
-            graph_api_url = f"https://graph.facebook.com/v17.0/{os.getenv("PAGE_ID")}/feed"
+            if self.scheduled_fb_post_id:
+                return  # Already processed
 
-            # Convert the datetime to Unix timestamp (seconds since epoch)
-            scheduled_publish_time = int(scheduled_date.timestamp())
-            print(scheduled_publish_time)
+            # Ensure there are images in the post
+            if not self.image_ids:
+                raise Exception("No images provided for the Facebook post.")
 
-            # Prepare the post data
-            payload = {
-                'message': f"{self.name}\n\n{self.content}",
-                'published': False,  # This makes it a scheduled post
-                'scheduled_publish_time': scheduled_publish_time,
-                'access_token':  os.getenv("ACCESS_TOKEN")
-            }
+            # Prepare message
+            full_message = f"{self.name}\n\n{self.content}"
 
-            # If there's a media suggestion, we could potentially upload an image here
-            # This would require additional code to either generate an image or use a stock image
+            # For Facebook feed posts with multiple images
+            graph_api_url = f"https://graph.facebook.com/v17.0/{os.getenv('PAGE_ID')}/feed"
 
-            # Make the API request
+            if len(self.image_ids) == 1:
+                # Single image post
+                payload = {
+                    'message': full_message,
+                    'link': self.image_ids[0].url,  # Link to the image
+                    'access_token': os.getenv("ACCESS_TOKEN")
+                }
+            else:
+                # Multiple images - use JSON array of attachments
+                attached_media = []
+                for image in self.image_ids:
+                    # First, upload each photo without publishing
+                    upload_url = f"https://graph.facebook.com/v17.0/{os.getenv('PAGE_ID')}/photos"
+                    upload_payload = {
+                        'url': image.url,
+                        'published': False,  # Don't publish immediately
+                        'access_token': os.getenv("ACCESS_TOKEN")
+                    }
+
+                    upload_response = requests.post(upload_url, data=upload_payload)
+                    upload_data = upload_response.json()
+
+                    if 'id' in upload_data:
+                        attached_media.append({'media_fbid': upload_data['id']})
+                    else:
+                        error_message = upload_data.get('error', {}).get('message', 'Unknown error')
+                        self.message_post(body=f"Warning: Failed to upload image: {error_message}")
+                        continue
+
+                if not attached_media:
+                    raise Exception("Failed to upload any images")
+
+                # Now create a post with all the attached media
+                payload = {
+                    'message': full_message,
+                    'attached_media': json.dumps(attached_media),
+                    'access_token': os.getenv("ACCESS_TOKEN")
+                }
+
+            # Make the post
             response = requests.post(graph_api_url, data=payload)
             response_data = response.json()
-            print(response_data)
+
             if 'id' in response_data:
-                # Update the post record with the Facebook post ID
-                post_record.write({
+                self.write({
                     'scheduled_fb_post_id': response_data['id'],
-                    'fb_scheduling_status': 'scheduled'
+                    'fb_scheduling_status': 'published'
                 })
-                self.message_post(body=f"Facebook post has been scheduled successfully for {scheduled_date}.")
+                if len(self.image_ids) == 1:
+                    self.message_post(body="Facebook post with image successfully published!")
+                else:
+                    self.message_post(body=f"Facebook post with {len(attached_media)} images successfully published!")
                 return True
             else:
                 error_message = response_data.get('error', {}).get('message', 'Unknown error')
-                post_record.write({'fb_scheduling_status': 'failed'})
-                self.message_post(body=f"Failed to schedule Facebook post: {error_message}")
-                return False
+                raise Exception(error_message)
 
         except Exception as e:
-            post_record.write({'fb_scheduling_status': 'failed'})
-            self.message_post(body=f"Error scheduling Facebook post: {str(e)}")
+            self.write({'fb_scheduling_status': 'failed'})
+            self.message_post(body=f"Failed to publish Facebook post: {str(e)}")
             return False
-
-    @api.model
-    def crone_check_post_status(self):
-        posts = self.search([
-            ('fb_scheduling_status', '=', 'scheduled'),
-        ])
-        for record in posts:
-            url = f"https://graph.facebook.com/v17.0/{record.scheduled_fb_post_id}"
-            params = {
-                'fields': 'id,is_published,status_type',
-                'access_token': os.getenv("ACCESS_TOKEN")}
-            response = requests.get(url, params=params)
-            data = response.json()
-            print(data)
-            if 'is_published' in data and data['is_published']:
-                record.write({'fb_scheduling_status': 'published'})
-
-            return {'type': 'ir.actions.client', 'tag': 'reload'}
-
-        return True
 
     def action_cancel(self):
         for record in self:
-
-            url = f"https://graph.facebook.com/v17.0/{record.scheduled_fb_post_id}"
-            params = {'access_token': os.getenv("ACCESS_TOKEN")}
-            response = requests.delete(url, params=params)
-
-            if response.status_code in (200, 204):
-                record.write({
-                    'scheduled_fb_post_id': False,
-                    'fb_scheduling_status': 'draft'
-                })
-                record.campaign_id.message_post(body="Scheduled Facebook post has been cancelled.")
-            else:
-                data = response.json()
-                error_message = data.get('error', {}).get('message', 'Unknown error')
-                record.campaign_id.message_post(body=f"Failed to cancel Facebook post: {error_message}")
-
-            return {'type': 'ir.actions.client', 'tag': 'reload'}
-
-        return True
+            record.write({'scheduled_fb_post_id': 'draft'})

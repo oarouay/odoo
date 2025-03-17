@@ -3,6 +3,7 @@ access_marketing_campaign_manager,marketing_campaign_manager,model_marketing_cam
 access_prompt_tag,prompt.tag access,model_prompt_tag,base.group_user,1,1,1,1
 access_generated_content,generated.content access,model_generated_content,base.group_user,1,1,1,1
 access_social_email,social.email access,model_social_email,base.group_user,1,1,1,1
-access_social_whatsapp,social.whatsapp access,model_social_whatsapp,base.group_user,1,1,1,1
+access_social_x,social.x access,model_social_x,base.group_user,1,1,1,1
 access_social_instagram,social.instagram access,model_social_instagram,base.group_user,1,1,1,1
 access_social_facebook,social.facebook access,model_social_facebook,base.group_user,1,1,1,1
+access_image_model,image.model access,model_image_model,base.group_user,1,1,1,1

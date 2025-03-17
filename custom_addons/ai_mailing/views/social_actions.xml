@@ -7,10 +7,10 @@
         <field name="view_mode">tree,form</field>
     </record>
 
-    <!-- WhatsApp Action -->
-    <record id="action_social_whatsapp" model="ir.actions.act_window">
-        <field name="name">WhatsApp Messages</field>
-        <field name="res_model">social.whatsapp</field>
+    <!-- X (Twitter) Action -->
+    <record id="action_social_x" model="ir.actions.act_window">
+        <field name="name">Tweets</field>
+        <field name="res_model">social.x</field>
         <field name="view_mode">tree,form</field>
     </record>
 

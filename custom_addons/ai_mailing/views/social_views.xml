@@ -8,10 +8,13 @@
             <form string="Email Post">
                 <header>
                         <button name="action_confirm" type="object" string="Confirm" invisible="mail_scheduling_status != 'draft'"
-                            class="oe_highlight"/>
+                            class="oe_highlight"
+                        groups="ai_mailing.group_marketing_responsible"/>
                         <button name="action_confirm" type="object" string="Re try" invisible="mail_scheduling_status != 'failed'"
-                            class="oe_highlight"/>
-                        <button name="action_cancel" type="object" string="Cancel" invisible="mail_scheduling_status == 'draft' or mail_scheduling_status == 'sent' or mail_scheduling_status == 'failed'"/>
+                            class="oe_highlight"
+                        groups="ai_mailing.group_marketing_responsible"/>
+                        <button name="action_cancel" type="object" string="Cancel" invisible="mail_scheduling_status == 'draft' or mail_scheduling_status == 'sent' or mail_scheduling_status == 'failed'"
+                        groups="ai_mailing.group_marketing_responsible"/>
                         <field name="mail_scheduling_status" widget="statusbar" options="{'statusbar_visible': ['draft', 'scheduled', 'sent', 'failed']}"/>
                 </header>
                 <sheet>
@@ -43,6 +46,7 @@
             <tree string="Emails">
                 <field name="name"/>
                 <field name="publish_date"/>
+                <field name="mail_scheduling_status"/>
             </tree>
         </field>
     </record>
@@ -56,11 +60,14 @@
             <sheet>
                 <header>
                     <button name="action_confirm" type="object" string="Confirm"
-                        invisible="x_scheduling_status != 'draft'" class="oe_highlight"/>
+                        invisible="x_scheduling_status != 'draft'" class="oe_highlight"
+                    groups="ai_mailing.group_marketing_responsible"/>
                     <button name="action_confirm" type="object" string="Retry"
-                        invisible="x_scheduling_status != 'failed'" class="oe_highlight"/>
+                        invisible="x_scheduling_status != 'failed'" class="oe_highlight"
+                    groups="ai_mailing.group_marketing_responsible"/>
                     <button name="action_cancel" type="object" string="Cancel"
-                        invisible="x_scheduling_status == 'draft' or x_scheduling_status == 'published' or x_scheduling_status == 'failed'"/>
+                        invisible="x_scheduling_status == 'draft' or x_scheduling_status == 'published' or x_scheduling_status == 'failed'"
+                    groups="ai_mailing.group_marketing_responsible"/>
                     <field name="x_scheduling_status" widget="statusbar" options="{'statusbar_visible': ['draft', 'scheduled', 'published', 'failed']}"/>
                 </header>
                 <group>
@@ -100,10 +107,13 @@
                 <sheet>
                     <header>
                         <button name="action_confirm" type="object" string="Confirm" invisible="ig_scheduling_status != 'draft'"
-                            class="oe_highlight"/>
+                            class="oe_highlight"
+                        groups="ai_mailing.group_marketing_responsible"/>
                         <button name="action_confirm" type="object" string="Re try" invisible="ig_scheduling_status != 'failed'"
-                            class="oe_highlight"/>
-                        <button name="action_cancel" type="object" string="Cancel" invisible="ig_scheduling_status == 'draft' or ig_scheduling_status == 'published' or ig_scheduling_status == 'failed'"/>
+                            class="oe_highlight"
+                        groups="ai_mailing.group_marketing_responsible"/>
+                        <button name="action_cancel" type="object" string="Cancel" invisible="ig_scheduling_status == 'draft' or ig_scheduling_status == 'published' or ig_scheduling_status == 'failed'"
+                        groups="ai_mailing.group_marketing_responsible"/>
                         <field name="ig_scheduling_status" widget="statusbar" options="{'statusbar_visible': ['draft', 'scheduled', 'published', 'failed']}"/>
                     </header>
                     <group>
@@ -124,6 +134,7 @@
             <tree string="Instagram Posts">
                 <field name="name"/>
                 <field name="publish_date"/>
+                <field name="ig_scheduling_status"/>
             </tree>
         </field>
     </record>
@@ -137,16 +148,20 @@
                 <sheet>
                     <header>
                         <button name="action_confirm" type="object" string="Confirm" invisible="fb_scheduling_status != 'draft'"
-                            class="oe_highlight"/>
+                            class="oe_highlight"
+                        groups="ai_mailing.group_marketing_responsible"/>
                         <button name="action_confirm" type="object" string="Re try" invisible="fb_scheduling_status != 'failed'"
-                            class="oe_highlight"/>
-                        <button name="action_cancel" type="object" string="Cancel" invisible="fb_scheduling_status == 'draft' or fb_scheduling_status == 'published' or fb_scheduling_status == 'failed'"/>
+                            class="oe_highlight"
+                        groups="ai_mailing.group_marketing_responsible"/>
+                        <button name="action_cancel" type="object" string="Cancel" invisible="fb_scheduling_status == 'draft' or fb_scheduling_status == 'published' or fb_scheduling_status == 'failed'"
+                        groups="ai_mailing.group_marketing_responsible"/>
                         <field name="fb_scheduling_status" widget="statusbar" options="{'statusbar_visible': ['draft', 'scheduled', 'published', 'failed']}"/>
                     </header>
                     <group>
                         <field name="name"/>
                         <field name="image_ids" widget="many2many_tags"/>
                         <field name="content"/>
+                        <field name="scheduled_fb_post_id" readonly="1"/>
                         <field name="publish_date"/>
                     </group>
                 </sheet>
@@ -161,6 +176,7 @@
             <tree string="Facebook Posts">
                 <field name="name"/>
                 <field name="publish_date"/>
+                <field name="fb_scheduling_status"/>
             </tree>
         </field>
     </record>
@@ -207,4 +223,81 @@
         <field name="interval_type">minutes</field>
         <field name="numbercall">-1</field>
     </record>
+
+    <!-- Social Email Search View -->
+    <record id="view_social_email_search" model="ir.ui.view">
+    <field name="name">social.email.search</field>
+    <field name="model">social.email</field>
+    <field name="arch" type="xml">
+        <search string="Search Emails">
+            <field name="name"/>
+            <group expand="0" string="Group By">
+                <filter string="Status" name="groupby_status" context="{'group_by': 'mail_scheduling_status'}"/>
+            </group>
+            <separator/>
+            <filter string="Draft" name="draft" domain="[('mail_scheduling_status', '=', 'draft')]"/>
+            <filter string="Scheduled" name="scheduled" domain="[('mail_scheduling_status', '=', 'scheduled')]"/>
+            <filter string="Sent" name="sent" domain="[('mail_scheduling_status', '=', 'sent')]"/>
+            <filter string="Failed" name="failed" domain="[('mail_scheduling_status', '=', 'failed')]"/>
+        </search>
+    </field>
+</record>
+
+    <!-- Social X (Twitter) Search View -->
+    <record id="view_social_x_search" model="ir.ui.view">
+    <field name="name">social.x.search</field>
+    <field name="model">social.x</field>
+    <field name="arch" type="xml">
+        <search string="Search X Posts">
+            <field name="name"/>
+            <group expand="0" string="Group By">
+                <filter string="Status" name="groupby_status" context="{'group_by': 'x_scheduling_status'}"/>
+            </group>
+            <separator/>
+            <filter string="Draft" name="draft" domain="[('x_scheduling_status', '=', 'draft')]"/>
+            <filter string="Scheduled" name="scheduled" domain="[('x_scheduling_status', '=', 'scheduled')]"/>
+            <filter string="Published" name="published" domain="[('x_scheduling_status', '=', 'published')]"/>
+            <filter string="Failed" name="failed" domain="[('x_scheduling_status', '=', 'failed')]"/>
+        </search>
+    </field>
+</record>
+
+    <!-- Social Instagram Search View -->
+    <record id="view_social_instagram_search" model="ir.ui.view">
+    <field name="name">social.instagram.search</field>
+    <field name="model">social.instagram</field>
+    <field name="arch" type="xml">
+        <search string="Search Instagram Posts">
+            <field name="name"/>
+            <group expand="0" string="Group By">
+                <filter string="Status" name="groupby_status" context="{'group_by': 'ig_scheduling_status'}"/>
+            </group>
+            <separator/>
+            <filter string="Draft" name="draft" domain="[('ig_scheduling_status', '=', 'draft')]"/>
+            <filter string="Scheduled" name="scheduled" domain="[('ig_scheduling_status', '=', 'scheduled')]"/>
+            <filter string="Published" name="published" domain="[('ig_scheduling_status', '=', 'published')]"/>
+            <filter string="Failed" name="failed" domain="[('ig_scheduling_status', '=', 'failed')]"/>
+        </search>
+    </field>
+</record>
+
+    <!-- Social Facebook Search View -->
+    <record id="view_social_facebook_search" model="ir.ui.view">
+    <field name="name">social.facebook.search</field>
+    <field name="model">social.facebook</field>
+    <field name="arch" type="xml">
+        <search string="Search Facebook Posts">
+            <field name="name"/>
+            <group expand="0" string="Group By">
+                <filter string="Status" name="groupby_status" context="{'group_by': 'fb_scheduling_status'}"/>
+            </group>
+            <separator/>
+            <filter string="Draft" name="draft" domain="[('fb_scheduling_status', '=', 'draft')]"/>
+            <filter string="Scheduled" name="scheduled" domain="[('fb_scheduling_status', '=', 'scheduled')]"/>
+            <filter string="Published" name="published" domain="[('fb_scheduling_status', '=', 'published')]"/>
+            <filter string="Failed" name="failed" domain="[('fb_scheduling_status', '=', 'failed')]"/>
+        </search>
+    </field>
+</record>
+
 </odoo>

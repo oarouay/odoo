@@ -6,15 +6,31 @@
         'mail',
         'sale',
         'product',
-        'mass_mailing'
+        'mass_mailing',
+        'website_sale',
+        "utm",
                  ],
     "data" : [
+        'security/security.xml',
         "security/ir.model.access.csv",
+        "views/cost_views.xml",
+        "views/calendar_views.xml",
+        "views/dashboard_sales.xml",
         "views/mailing_ai_views.xml",
         "views/prompt_tag_views.xml",
         "views/social_views.xml",
+        "views/cron_job.xml",
         "views/media_views.xml",
         "views/social_actions.xml",
-        "views/menu_mailing.xml",
-    ]
+        "views/menu_mailing.xml"
+    ],
+    'assets': {
+        'web.assets_backend': [
+            'ai_mailing/static/src/components/**/*.js',
+            'ai_mailing/static/src/components/**/*.xml',
+            'ai_mailing/static/src/components/**/*.scss',
+        ],
+    },
+    "application": True,
+    "installable": True
 }

@@ -1,9 +1,20 @@
 id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
-access_marketing_campaign_manager,marketing_campaign_manager,model_marketing_campaign,base.group_user,1,1,1,1
-access_prompt_tag,prompt.tag access,model_prompt_tag,base.group_user,1,1,1,1
-access_generated_content,generated.content access,model_generated_content,base.group_user,1,1,1,1
-access_social_email,social.email access,model_social_email,base.group_user,1,1,1,1
-access_social_x,social.x access,model_social_x,base.group_user,1,1,1,1
-access_social_instagram,social.instagram access,model_social_instagram,base.group_user,1,1,1,1
-access_social_facebook,social.facebook access,model_social_facebook,base.group_user,1,1,1,1
-access_image_model,image.model access,model_image_model,base.group_user,1,1,1,1
+access_marketing_campaign_responsible,marketing.campaign.responsible,model_marketing_campaign,ai_mailing.group_marketing_responsible,1,1,1,1
+access_social_facebook_responsible,social.facebook.responsible,model_social_facebook,ai_mailing.group_marketing_responsible,1,1,1,1
+access_social_instagram_responsible,social.instagram.responsible,model_social_instagram,ai_mailing.group_marketing_responsible,1,1,1,1
+access_social_x_responsible,social.x.responsible,model_social_x,ai_mailing.group_marketing_responsible,1,1,1,1
+access_social_email_responsible,social.email.responsible,model_social_email,ai_mailing.group_marketing_responsible,1,1,1,1
+access_image_model_responsible,image.model.responsible,model_image_model,ai_mailing.group_marketing_responsible,1,1,1,1
+access_prompt_tag_responsible,prompt.tag.responsible,model_prompt_tag,ai_mailing.group_marketing_responsible,1,1,1,1
+access_link_model_responsible,link.model.responsible,model_link_model,ai_mailing.group_marketing_responsible,1,1,1,1
+access_marketing_campaign_cost_responsible,marketing.campaign.cost.responsible,model_marketing_campaign_cost,ai_mailing.group_marketing_responsible,1,1,1,1
+access_marketing_campaign_employee,marketing.campaign.employee,model_marketing_campaign,ai_mailing.group_marketing_employee,1,1,0,0
+access_social_facebook_employee,social.facebook.employee,model_social_facebook,ai_mailing.group_marketing_employee,1,1,1,1
+access_social_instagram_employee,social.instagram.employee,model_social_instagram,ai_mailing.group_marketing_employee,1,1,1,1
+access_social_x_employee,social.x.employee,model_social_x,ai_mailing.group_marketing_employee,1,1,1,1
+access_social_email_employee,social.email.employee,model_social_email,ai_mailing.group_marketing_employee,1,1,1,1
+access_image_model_employee,image.model.employee,model_image_model,ai_mailing.group_marketing_employee,1,1,1,1
+access_prompt_tag_employee,prompt.tag.employee,model_prompt_tag,ai_mailing.group_marketing_employee,1,1,1,1
+access_link_model_employee,link.model.employee,model_link_model,ai_mailing.group_marketing_employee,1,1,1,1
+access_marketing_campaign_cost_employee,marketing.campaign.cost.employee,model_marketing_campaign_cost,ai_mailing.group_marketing_employee,1,1,1,1
+access_holiday_event_responsible,holiday.event.responsible,model_holiday_event,ai_mailing.group_marketing_responsible,1,1,1,1

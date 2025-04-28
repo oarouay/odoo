@@ -1,0 +1,155 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<templates xml:space="preserve">
+    <t t-name="ai_mailing.OwlSalesDashboard" owl="1">
+        <div class="vh-100 overflow-auto bg-muted">
+            <div class="row m-3">
+                <div class="col-lg-7">
+                    <div class="row">
+                        <div class="col m-0 p-0">
+                            <div class="shadow-sm border m-2 p-4 bg-white">
+                                <div class="d-flex align-items-center justify-content-between">
+                                    <h1 class="text-primary fw-bold">Custom Sales Dashboard</h1>
+                                        <div>
+                                        <div class="mb-2">
+                                            <label class="form-label">Primary Campaign</label>
+                                            <select class="form-select" t-ref="primaryCampaignSelect" t-on-change="onPrimaryCampaignChange">
+                                                <option value="">Select Campaign</option>
+                                                <t t-foreach="state.campaigns" t-as="campaign" t-key="campaign.id">
+                                                    <option t-att-value="campaign.id" t-esc="campaign.name"/>
+                                                </t>
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label class="form-label">Comparison Campaign</label>
+                                            <select class="form-select" t-ref="comparisonCampaignSelect" t-on-change="onComparisonCampaignChange">
+                                                <option value="">Select Campaign to Compare</option>
+                                                <t t-foreach="state.campaigns" t-as="campaign" t-key="campaign.id">
+                                                    <option t-att-value="campaign.id" t-esc="campaign.name"/>
+                                                </t>
+                                            </select>
+                                        </div>
+                                            <button type="button"
+                                            class="btn btn-outline-primary"
+                                            t-on-click="onGenerateReportClick">
+                                        <i class="fa fa-magic me-2"/> Generate AI Report
+                                    </button>
+
+                                    </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="row">
+                            <KpiCard name="'Total Clicks'" value="state.total_clicks.value" percentage="state.total_clicks.percentage"/>
+                            <KpiCard name="'Unique Clicks'" value="state.unique_clicks.value" percentage="state.unique_clicks.percentage"/>
+                            <KpiCard name="'Conversion Rate'" value="state.conversion_rate.value + '%'" percentage="state.conversion_rate.percentage"/>
+                        </div>
+                        <div class="row">
+                            <KpiCard name="'Total Revenue'" value="'$' + state.total_revenue.value" percentage="state.total_revenue.percentage"/>
+                            <KpiCard name="'ROI'" value="state.roi.value" percentage="state.roi.percentage"/>
+                            <KpiCard name="'Cost Per Click'" value="state.cpc.value" percentage="state.cpc.percentage"/>
+                        </div>
+                        <div class="row">
+                            <KpiCard name="'Total Sales'" value="state.total_sales.value" percentage="state.total_sales.percentage"/>
+                            <KpiCard name="'Cost Per Acquisition'" value="state.cpa.value" percentage="state.cpa.percentage"/>
+                            <KpiCard name="'Avg. Order Value'" value="state.avg_order.value" percentage="state.avg_order.percentage"/>
+                        </div>
+                        <div class="row">
+                            <div class="col-lg-6 m-0 p-0">
+                                <div class="shadow-sm border m-2 p-4 bg-white">
+                                    <div class="d-flex align-items-center justify-content-between">
+                                        <h3 class="text-primary fw-bold">Top Products</h3>
+                                        <div class="px-3 py-1 bg-primary cursor-pointer">
+                                            <span class="fa fa-arrow-right text-white"/>
+                                        </div>
+                                    </div>
+                                    <ChartRenderer
+                                        type="'doughnut'"
+                                        title="'Top Products Report'"
+                                        campaignId="state.selectedCampaignId"
+                                        chartName="'top_products_chart'"
+                                    />
+                                </div>
+                            </div>
+                            <div class="col-lg-6 m-0 p-0">
+                                <div class="shadow-sm border m-2 p-4 bg-white">
+                                    <div class="d-flex align-items-center justify-content-between mb-3">
+                                        <h3 class="text-primary fw-bold">Top Campaigns by ROI</h3>
+                                        <div class="d-flex">
+                                            <select class="form-select" t-model="state.budgetDateRange" t-on-change="onBudgetDateRangeChange">
+                                                <option value="7">Last 7 Days</option>
+                                                <option value="30">Last 30 Days</option>
+                                                <option value="90">Last 90 Days</option>
+                                                <option value="365">Last Year</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <ChartRenderer
+                                        type="'bar'"
+                                        title="'ROI comparison'"
+                                        chartName="'budget_vs_performance_chart'"
+                                        campaignId="state.selectedCampaignId"
+                                        chartDateRange="state.budgetDateRange"
+                                    />
+                                </div>
+                            </div>
+                        </div>
+                        </div>
+                <div class="col-lg-5">
+    <div class="m-0 p-0">
+        <div class="shadow-sm border m-2 p-4 bg-white">
+            <div class="d-flex align-items-center justify-content-between mb-3">
+                <h3 class="text-primary fw-bold">Social Media Performance</h3>
+                <div class="d-flex">
+                    <select class="form-select me-2" t-model="state.socialMediaDateRange" t-on-change="onSocialMediaDateRangeChange">
+                        <option value="7">Last 7 Days</option>
+                        <option value="30">Last 30 Days</option>
+                        <option value="90">Last 90 Days</option>
+                        <option value="365">Last Year</option>
+                    </select>
+                </div>
+            </div>
+            <ChartRenderer
+                type="'bar'"
+                title="'Social Media Sales and Clicks'"
+                campaignId="state.selectedCampaignId"
+                chartDateRange="state.socialMediaDateRange"
+                chartName="'social_media_performance_chart'"
+            />
+        </div>
+    </div>
+
+    <div class="m-0 p-0">
+        <div class="shadow-sm border m-2 p-4 bg-white">
+            <div class="d-flex align-items-center justify-content-between mb-3">
+                <h3 class="text-primary fw-bold">Clicks and Sales Over Time</h3>
+                <div class="d-flex">
+                    <select class="form-select me-2" t-model="state.chartInterval" t-on-change="onIntervalChange">
+                        <option value="day">Daily</option>
+                        <option value="week">Weekly</option>
+                        <option value="month">Monthly</option>
+                    </select>
+                    <select class="form-select" t-model="state.chartDateRange" t-on-change="onDateRangeChange">
+                        <option value="7">Last 7 Days</option>
+                        <option value="30">Last 30 Days</option>
+                        <option value="90">Last 90 Days</option>
+                        <option value="365">Last Year</option>
+                    </select>
+                </div>
+            </div>
+            <ChartRenderer
+                type="'line'"
+                title="'Clicks and Sales Trend'"
+                campaignId="state.selectedCampaignId"
+                chartInterval="state.chartInterval"
+                chartDateRange="state.chartDateRange"
+                chartName="'clicks_sales_trend_chart'"
+            />
+        </div>
+    </div>
+</div>
+
+            </div>
+        </div>
+    </t>
+</templates>

@@ -1,0 +1,57 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <record id="view_holiday_event_form" model="ir.ui.view">
+        <field name="name">holiday.event.form</field>
+        <field name="model">holiday.event</field>
+        <field name="arch" type="xml">
+            <form>
+                <header>
+                    <button name="action_create_campaign"
+                            type="object"
+                            string="Create Campaign"
+                            class="btn-primary"
+                            invisble="id == False"/>
+                </header>
+                <sheet>
+                    <group>
+                        <field name="name"/>
+                        <field name="date"/>
+                        <field name="country"/>
+                        <field name="description"/>
+                        <field name="event_type"/>
+                    </group>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_holiday_event_calendar" model="ir.ui.view">
+        <field name="name">holiday.event.calendar</field>
+        <field name="model">holiday.event</field>
+        <field name="arch" type="xml">
+            <calendar string="Holidays and Events" date_start="date" color="country">
+                <field name="name"/>
+                <field name="description"/>
+                <field name="event_type"/>
+            </calendar>
+        </field>
+    </record>
+
+    <record id="action_holiday_event_calendar" model="ir.actions.act_window">
+        <field name="name">Holidays and Events Calendar</field>
+        <field name="res_model">holiday.event</field>
+        <field name="view_mode">calendar,tree,form</field>
+    </record>
+
+    <record id="ir_cron_fetch_holiday_events" model="ir.cron">
+        <field name="name">Fetch Holidays and Events</field>
+        <field name="model_id" ref="model_holiday_event"/>
+        <field name="state">code</field>
+        <field name="code">model.fetch_calendarific_events()</field>
+        <field name="interval_number">1</field>
+        <field name="interval_type">days</field>
+        <field name="numbercall">-1</field>
+        <field name="doall">True</field>
+        <field name="active">True</field>
+    </record>
+</odoo>

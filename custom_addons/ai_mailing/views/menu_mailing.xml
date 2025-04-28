@@ -5,10 +5,31 @@
     <menuitem name="Generate Email with AI"
               id="ai_mass_mailing_menu"
               parent="mailing_menu_root"
-              action="action_mailing_ai"/>
+              action="action_marketing_campaign"/>
+
+    <menuitem id="menu_owl_dashboard"
+                  name="Sales Dashboard"
+                  action="action_marketing_dashboard_client"
+                  parent="mailing_menu_root"/>
+
+<!--    <menuitem id="menu_marketing_dashboard"-->
+<!--                  name="Marketing Analytics"-->
+<!--                  action="action_marketing_dashboard"-->
+<!--                  parent="mailing_menu_root"/>-->
+
+
+    <menuitem id="menu_holiday_event_calendar"
+              name="Holidays &amp; Events"
+              parent="mailing_menu_root"
+              action="action_holiday_event_calendar"
+              sequence="20"/>
 
     <menuitem id="menu_configuration"
               name="Configuration"
+              parent="mailing_menu_root"/>
+
+    <menuitem id="menu_resources"
+              name="Resources"
               parent="mailing_menu_root"/>
 
     <menuitem id="menu_prompt_tag"
@@ -16,11 +37,24 @@
               parent="menu_configuration"
               action="action_prompt_tag"/>
 
+    <menuitem id="menu_campaign_cost"
+              name="Costs"
+              parent="menu_configuration"
+              action="action_marketing_campaign_cost"/>
+
+
     <menuitem id="menu_image"
               name="Images"
-              parent="menu_configuration"
+              parent="menu_resources"
               action="action_image_model"
               sequence="10"/>
+
+    <menuitem id="menu_link"
+          name="Links"
+          parent="menu_resources"
+          action="action_link_model"
+          sequence="10"/>
+
 
     <menuitem id="menu_prompt_social"
               name="Socials"

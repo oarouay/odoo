@@ -1,52 +1,47 @@
-from dateutil.utils import today
-
-from odoo.exceptions import UserError
-
-from odoo import models, fields, api
 import google.generativeai as genai
-from dotenv import load_dotenv
+from odoo.exceptions import UserError
+from odoo import models, fields, api, _
 from datetime import datetime, date
 import os
 import json
 from math import floor
 
-load_dotenv()
 
 class MarketingCampaign(models.Model):
     _name = "marketing.campaign"
     _description = "Marketing Campaign"
     _inherit = ["mail.thread"]
 
-
-
     company_id = fields.Many2one('res.company', string='Company', index=True, default=lambda self: self.env.company)
 
     # Campaign Basic Information
     name = fields.Char(string="Campaign Name", required=True)
-    campaign_type = fields.Selection([
-        ('social_media', 'Social Media'),
-        ('email_marketing', 'Email Marketing'),
-        ('ads', 'Advertising')
-    ], string="Campaign Type", required=True)
     start_date = fields.Date(string="Start Date")
     end_date = fields.Date(string="End Date")
+    user_id = fields.Many2one('res.users', string='Responsible User', default=lambda self: self.env.user, tracking=True)
+    record_color = fields.Integer('Color Index', compute='_compute_record_color')
+
+
     status = fields.Selection([
         ('draft', 'Draft'),
         ('running', 'Running'),
         ('completed', 'Completed'),
         ('canceled', 'Canceled')
-    ], string="Status", default='draft')
+    ], string="Status", default='draft', tracking=True)
 
     content_strategy = fields.Selection([
         ('engagement', 'Engagement'),
         ('sales', 'Sales'),
         ('awareness', 'Brand Awareness')
     ], string="Content Strategy")
-    post_frequency = fields.Char(string="Post Frequency",compute="_compute_post_frequency", store=True, default="")
+    post_frequency = fields.Char(string="Post Frequency", compute="_compute_post_frequency", store=True)
     context = fields.Text(string="Context")
     tag_ids = fields.Many2many('prompt.tag', string='Tags')
     image_ids = fields.Many2many('image.model', string='Images')
+    link_ids = fields.Many2many('link.model', string='Links')
 
+    # Tracking fields
+    tracked_link_ids = fields.One2many('link.tracker', 'campaign_id', string="Tracked Links")
 
     email_ids = fields.One2many('social.email', 'campaign_id', string="Emails")
     x_ids = fields.One2many('social.x', 'campaign_id', string="Tweets")
@@ -54,25 +49,302 @@ class MarketingCampaign(models.Model):
     facebook_ids = fields.One2many('social.facebook', 'campaign_id', string="Facebook Posts")
 
     # AI-Generated Email Content
-    optional_product_ids = fields.Many2many('product.product', string='Optional Products')
-    optional_product_tags = fields.Many2many(
+    product_tags = fields.Many2many(
         'product.product',
-        relation='marketing_campaign_product_tags_rel',
+        relation='marketing_campaign_product_rel',
         column1='campaign_id',
         column2='product_id',
-        string="Product Tags(optional)",
-        compute="_compute_optional_product_tags",
-        store=True
+        string="Tagged Products",
+        domain=lambda self: [('is_published', '=', True)]
     )
+
+    # Dashboard statistics
+    click_count = fields.Integer(compute='_compute_campaign_stats', string="Total Clicks")
+    unique_click_count = fields.Integer(compute='_compute_campaign_stats', string="Unique Clicks")
+    conversion_rate = fields.Float(compute='_compute_campaign_stats', string="Conversion Rate (%)")
+    total_sales = fields.Integer(compute='_compute_campaign_stats', string="Total Sales")
+    total_revenue = fields.Float(compute='_compute_campaign_stats', string="Total Revenue")
+    product_links = fields.Text(string="Product Links", compute="_compute_product_links", store=True)
+
+    cost = fields.Float(string="Total Cost", compute="_update_total_cost", store=True)
+    cost_details_ids = fields.One2many('marketing.campaign.cost', 'campaign_id', string="Cost Details")
+
+    show_canceled_alert = fields.Boolean(compute='_compute_show_alerts', store=False)
+    show_completed_alert = fields.Boolean(compute='_compute_show_alerts', store=False)
+
+    apply_discount = fields.Boolean(string="Apply Discount", default=False, tracking=True)
+    discount_type = fields.Selection([
+        ('percent', 'Percentage'),
+        ('fixed', 'Fixed Amount')
+    ], string="Discount Type", default='percent', tracking=True)
+    discount_value = fields.Float(string="Discount Value", tracking=True)
+
+
+    def action_apply_campaign_discount(self):
+        """
+        Apply the campaign discount to all linked products and make it effective.
+        """
+        self.ensure_one()
+        # 1) Pre‑checks
+        if not self.apply_discount:
+            raise UserError(_("Please tick 'Apply Discount' on the campaign first."))
+        if not self.product_tags:
+            raise UserError(_("No products tagged—add at least one product to apply discounts."))
+        if not self.discount_value:
+            raise UserError(_("Please set a discount value greater than zero."))
+
+        # 2) Locate or create a campaign‑specific pricelist
+        pricelist_name = f"Campaign {self.name} Discount"
+        pricelist = self.env['product.pricelist'].search([
+            ('name', '=', pricelist_name),
+        ], limit=1)
+
+        if not pricelist:
+            pricelist = self.env['product.pricelist'].create({
+                'name': pricelist_name,
+                'currency_id': self.env.company.currency_id.id,
+                'active': True,
+                'sequence': 1,  # Lower sequence = higher priority
+            })
+
+        # 3) Create or update pricelist items for each product
+        for product in self.product_tags:
+            # Check for existing item
+            print(product.id,product.product_tmpl_id)
+            existing_item = self.env['product.pricelist.item'].search([
+                ('pricelist_id', '=', pricelist.id),
+                ('product_id', '=', product.id),
+                ('applied_on', '=', '0_product_variant'),
+            ], limit=1)
+
+            # Prepare values based on discount type
+            if self.discount_type == 'percent':
+                vals = {
+                    'pricelist_id': pricelist.id,
+                    'product_id': product.id,
+                    'product_tmpl_id': product.product_tmpl_id.id,
+                    'applied_on': '0_product_variant',
+                    'compute_price': 'percentage',
+                    'percent_price': self.discount_value,  # Positive value for discount percentage
+                    'min_quantity': 1,
+                    'date_start': self.start_date,
+                    'date_end': self.end_date,
+                }
+            else:  # fixed amount
+                vals = {
+                    'pricelist_id': pricelist.id,
+                    'product_id': product.id,
+                    'product_tmpl_id': product.product_tmpl_id.id,
+                    'applied_on': '0_product_variant',
+                    'compute_price': 'fixed',
+                    'fixed_price': max(0, product.lst_price - self.discount_value),
+                    'min_quantity': 1,
+                    'date_start': self.start_date,
+                    'date_end': self.end_date,
+                }
+
+            # Create or update the item
+            if existing_item:
+                existing_item.write(vals)
+            else:
+                self.env['product.pricelist.item'].create(vals)
+
+        # 4) Store reference to the pricelist
+        if hasattr(self, 'pricelist_id'):
+            self.pricelist_id = pricelist.id
+
+        # 5) CRITICAL: Make the pricelist effective by one of these methods:
+
+        # Option A: Set as website pricelist if this is for e-commerce
+        website = self.env['website'].get_current_website()
+        if website:
+            # Either set as the default pricelist
+            website.pricelist_id = pricelist.id
+
+            # Or add to the website's selectable pricelists
+            website.pricelist_ids = [(4, pricelist.id)]
+
+        # Option B: Assign to specific customer groups (partners)
+        # Uncomment and modify as needed:
+        # partners = self.env['res.partner'].search([('your_criteria', '=', True)])
+        # for partner in partners:
+        #     partner.property_product_pricelist = pricelist.id
+
+        # Option C: Create a promotion rule to automatically apply this pricelist
+        # This requires the sale_promotion module in Enterprise
+
+        self.message_post(body=_(
+            "Discount applied to %s products via pricelist '%s'. "
+            "The pricelist has been set as the website default pricelist.",
+            len(self.product_tags), pricelist.name
+        ))
+
+        return {
+            'type': 'ir.actions.client',
+            'tag': 'display_notification',
+            'params': {
+                'title': _('Success'),
+                'message': _('Discount applied and activated for %s products.', len(self.product_tags)),
+                'sticky': False,
+                'type': 'success',
+            }
+        }
+
+    def action_remove_campaign_discount(self):
+        """
+        Remove the campaign discount and restore original pricing.
+        """
+        self.ensure_one()
+        pricelist_name = f"Campaign {self.name} Discount"
+        pricelist = self.env['product.pricelist'].search([
+            ('name', '=', pricelist_name),
+        ], limit=1)
+
+        if pricelist:
+            # 1) Remove pricelist from website if it was set
+            website = self.env['website'].get_current_website()
+            if website and website.pricelist_id.id == pricelist.id:
+                # Reset to the default pricelist
+                default_pricelist = self.env.ref('product.list0', raise_if_not_found=False)
+                if default_pricelist:
+                    website.pricelist_id = default_pricelist.id
+
+            # 2) Remove from website's selectable pricelists
+            if website and pricelist in website.pricelist_ids:
+                website.pricelist_ids = [(3, pricelist.id)]
+
+            # 3) Remove pricelist from any partners that might be using it
+            partners = self.env['res.partner'].search([
+                ('property_product_pricelist', '=', pricelist.id)
+            ])
+            if partners:
+                default_pricelist = self.env.ref('product.list0', raise_if_not_found=False)
+                if default_pricelist:
+                    partners.write({'property_product_pricelist': default_pricelist.id})
+
+            # 4) Remove the pricelist items
+            items = self.env['product.pricelist.item'].search([
+                ('pricelist_id', '=', pricelist.id),
+                ('product_id', 'in', self.product_tags.ids),
+            ])
+            if items:
+                items.unlink()
+
+            # 5) Deactivate the pricelist
+            pricelist.active = False
+
+            self.message_post(body=_(
+                "Campaign discount removed. Pricelist '%s' has been deactivated and removed from website/customers.",
+                pricelist.name
+            ))
+
+        return {
+            'type': 'ir.actions.client',
+            'tag': 'display_notification',
+            'params': {
+                'title': _('Success'),
+                'message': _('Discount removed and original pricing restored.'),
+                'sticky': False,
+                'type': 'success',
+            }
+        }
+
+
+
+
+    def _compute_show_alerts(self):
+        for rec in self:
+            rec.show_canceled_alert = rec.status == 'canceled'
+            rec.show_completed_alert = rec.status == 'completed'
+
+
+    def _compute_campaign_stats(self):
+        """Compute campaign statistics for dashboard."""
+        for campaign in self:
+            links = self.env['link.tracker'].search([('campaign_id', '=', campaign.id)])
+            clicks = links.mapped('link_click_ids')
+
+            campaign.click_count = len(clicks)
+            campaign.unique_click_count = len(set(clicks.mapped('ip')))
+
+            sales = clicks.mapped('sale_id')
+            campaign.total_sales = len(sales)
+            campaign.total_revenue = sum(sales.mapped('amount_total'))
+            campaign.conversion_rate = (
+                    campaign.total_sales / campaign.click_count * 100) if campaign.click_count else 0
+
+    @api.depends('cost_details_ids.amount')
+    def _update_total_cost(self):
+        """Update the total cost based on cost detail records."""
+        for campaign in self:
+            total = sum(campaign.cost_details_ids.mapped('amount'))
+            campaign.cost = total
+
+    def _compute_record_color(self):
+        for rec in self:
+            # Example: assign color index based on status
+            if rec.status == 'draft':
+                rec.record_color = 1
+            elif rec.status == 'running':
+                rec.record_color = 2
+            elif rec.status == 'completed':
+                rec.record_color = 3
+            elif rec.status == 'canceled':
+                rec.record_color = 4
+            else:
+                rec.record_color = 0
+
+    @api.onchange('product_tags')
+    def _onchange_product_tags(self):
+        """
+        When products are selected, automatically find and add their
+        corresponding images to image_ids
+        """
+        if not self.product_tags:
+            return
+
+        # Find all image records for the selected products
+        product_ids = self.product_tags.ids
+        image_records = self.env['image.model'].search([
+            ('description', 'in', [str(pid) for pid in product_ids])
+        ])
+
+        # Add the found images to image_ids without duplicates
+        if image_records:
+            current_image_ids = self.image_ids.ids
+            self.image_ids = [(4, img.id) for img in image_records if img.id not in current_image_ids]
+
+    @api.model
+    def _cron_check_completion(self):
+        """Cron job to check if campaigns are completed based on end_date."""
+        today = fields.Date.today()
+        campaigns = self.search([
+            ('status', '=', 'running'),
+            ('end_date', '<=', today)
+        ])
+        for campaign in campaigns:
+            campaign.action_set_completed()
+            campaign.message_post(body=_("Campaign automatically marked as completed by the system."))
+
+    @api.depends('product_tags')
+    def _compute_product_links(self):
+        """Compute product links for the campaign."""
+        base_url = self.env['ir.config_parameter'].sudo().get_param('web.base.url')
+        for campaign in self:
+            product_links = [
+                f"{base_url}/shop/product/{p.product_tmpl_id.id}" for p in self.env['product.product'].search([
+                    ('is_published', '=', True),
+                    ('id', 'in', campaign.product_tags.ids)
+                ])
+            ]
+            campaign.product_links = "\n".join(product_links)
 
     def action_set_running(self):
         """Change campaign status to 'running' and validate dates."""
         for record in self:
-            # Validate that the campaign has a start and end date
             if not record.start_date or not record.end_date:
-                raise UserError("A campaign must have both start and end dates before it can be set to running.")
+                raise UserError(_("A campaign must have both start and end dates before it can be set to running."))
 
-            # Check if there's at least one content item
             has_content = any([
                 record.email_ids,
                 record.x_ids,
@@ -81,40 +353,35 @@ class MarketingCampaign(models.Model):
             ])
 
             if not has_content:
-                raise UserError("Cannot start a campaign without any content. Please generate at least one post.")
+                raise UserError(_("Cannot start a campaign without any content. Please generate at least one post."))
 
             record.status = 'running'
-            record.message_post(body="Campaign status changed to 'Running'")
+            record.message_post(body=_("Campaign status changed to 'Running'"))
 
     def action_set_completed(self):
         """Mark the campaign as completed."""
         for record in self:
-            # Only running campaigns can be completed
             if record.status != 'running':
-                raise UserError("Only running campaigns can be marked as completed.")
-
+                raise UserError(_("Only running campaigns can be marked as completed."))
+            record.action_remove_campaign_discount()
             record.status = 'completed'
-            record.message_post(body="Campaign marked as 'Completed'")
+            record.message_post(body=_("Campaign marked as 'Completed'"))
 
     def action_set_canceled(self):
         """Cancel the campaign."""
         for record in self:
-            # Can't cancel completed campaigns
             if record.status == 'completed':
-                raise UserError("Completed campaigns cannot be canceled.")
-
+                raise UserError(_("Completed campaigns cannot be canceled."))
             record.status = 'canceled'
-            record.message_post(body="Campaign was canceled.")
+            record.message_post(body=_("Campaign was canceled."))
 
     def action_reset_to_draft(self):
         """Reset campaign to draft status."""
         for record in self:
-            # Completed campaigns can't be reset
             if record.status == 'completed':
-                raise UserError("Completed campaigns cannot be reset to draft.")
-
+                raise UserError(_("Completed campaigns cannot be reset to draft."))
             record.status = 'draft'
-            record.message_post(body="Campaign reset to 'Draft' status.")
+            record.message_post(body=_("Campaign reset to 'Draft' status."))
 
     @api.model
     def create(self, vals):
@@ -126,57 +393,51 @@ class MarketingCampaign(models.Model):
     def get_status_info(self):
         """Get information about the current status of the campaign."""
         self.ensure_one()
-
         status_info = {
             'draft': {
-                'description': 'Campaign is in preparation',
-                'next_actions': ['Set to Running', 'Cancel'],
+                'description': _('Campaign is in preparation'),
+                'next_actions': [_('Set to Running'), _('Cancel')],
                 'color': 'gray'
             },
             'running': {
-                'description': 'Campaign is currently active',
-                'next_actions': ['Mark as Completed', 'Cancel'],
+                'description': _('Campaign is currently active'),
+                'next_actions': [_('Mark as Completed'), _('Cancel')],
                 'color': 'green'
             },
             'completed': {
-                'description': 'Campaign has successfully finished',
-                'next_actions': [],  # No further actions for completed campaigns
+                'description': _('Campaign has successfully finished'),
+                'next_actions': [],
                 'color': 'blue'
             },
             'canceled': {
-                'description': 'Campaign was terminated before completion',
-                'next_actions': ['Reset to Draft'],
+                'description': _('Campaign was terminated before completion'),
+                'next_actions': [_('Reset to Draft')],
                 'color': 'red'
             }
         }
-
         return status_info.get(self.status, {})
-
-    def can_generate_content(self):
-        """Check if content can be generated for this campaign."""
-        self.ensure_one()
-        return self.status in ['draft', 'running']
 
     def action_confirm(self):
         """Confirm the campaign by setting it to running."""
         return self.action_set_running()
 
-
-    @api.onchange('start_date','end_date')
+    @api.onchange('start_date', 'end_date')
     def check_date_validity(self):
+        """Validate campaign dates."""
         s = self.start_date
         e = self.end_date
         if isinstance(s, date) and isinstance(e, date):
-            if e<=s :
-                raise UserError("The end date must be greater than the start date")
-            if s<date.today() :
-                raise UserError("The start date must be greater than todays date")
+            if e <= s:
+                raise UserError(_("The end date must be greater than the start date"))
+            if s < date.today():
+                raise UserError(_("The start date must be greater than today's date"))
 
-    @api.depends('start_date','end_date','email_ids', 'x_ids', 'instagram_ids', 'facebook_ids')
+    @api.depends('start_date', 'end_date', 'email_ids', 'x_ids', 'instagram_ids', 'facebook_ids')
     def _compute_post_frequency(self):
+        """Compute post frequency based on campaign duration and content count."""
         for record in self:
-            s=record.start_date
-            e=record.end_date
+            s = record.start_date
+            e = record.end_date
             if isinstance(s, date) and isinstance(e, date):
                 num_weeks = (e - s).days / 7
             else:
@@ -188,92 +449,127 @@ class MarketingCampaign(models.Model):
                 len(record.facebook_ids)
             ])
             if int(num_weeks) > 0:
-                record.post_frequency = f"{floor(total_posts / num_weeks):} per week"
+                record.post_frequency = f"{floor(total_posts / num_weeks)} per week"
             else:
                 record.post_frequency = f"{total_posts} this week"
 
-    @api.depends("optional_product_ids")
-    def _compute_optional_product_tags(self):
-        for record in self:
-            record.optional_product_tags = record.optional_product_ids
+    def generate_tracked_link(self, original_url, medium, source):
+        """
+        Generate a tracked link for this campaign
+        :param original_url: The URL to track
+        :param medium: The UTM medium (e.g., 'email', 'social')
+        :param source: The UTM source (e.g., 'facebook', 'twitter')
+        :return: The shortened tracking URL
+        """
+        self.ensure_one()
+
+        # Find or create UTM records
+        utm_medium = self.env['utm.medium'].search([('name', '=', medium)], limit=1)
+        if not utm_medium:
+            utm_medium = self.env['utm.medium'].create({'name': medium})
+
+        utm_source = self.env['utm.source'].search([('name', '=', source)], limit=1)
+        if not utm_source:
+            utm_source = self.env['utm.source'].create({'name': source})
+
+        # Create the tracked link
+        tracked_link = self.env['link.tracker'].create({
+            'url': original_url,
+            'campaign_id': self.id,
+            'source_id': utm_source.id,
+            'medium_id': utm_medium.id
+        })
+
+        return tracked_link.short_url
+
+    def action_view_click_analytics(self):
+        """Open the click analytics view for this campaign."""
+        self.ensure_one()
+        return {
+            'name': _('Campaign Click Analytics'),
+            'view_mode': 'tree,pivot,graph',
+            'res_model': 'link.tracker.click',
+            'type': 'ir.actions.act_window',
+            'domain': [('link_id', 'in', self.tracked_link_ids.ids)],
+            'context': {
+                'default_campaign_id': self.id,
+                'search_default_group_by_source': 1,
+                'search_default_group_by_medium': 1,
+                'search_default_group_by_device': 1,
+                'search_default_group_by_country': 1,
+            }
+        }
 
     def get_email_publish_dates(self):
+        """Get all email publish dates for this campaign."""
         self.ensure_one()
-
-        email_records = self.env['social.email'].search([
-            ('campaign_id', '=', self.id)
-        ])
-
+        email_records = self.env['social.email'].search([('campaign_id', '=', self.id)])
         publish_dates = email_records.mapped('publish_date')
-
-        publish_dates_str = [dt.strftime("%Y-%m-%d %H:%M:%S") for dt in publish_dates if dt]
-
-        return publish_dates_str
+        return [dt.strftime("%Y-%m-%d %H:%M:%S") for dt in publish_dates if dt]
 
     def get_instagram_publish_dates(self):
-
+        """Get all Instagram publish dates for this campaign."""
         self.ensure_one()
-
-
-        email_records = self.env['social.instagram'].search([
-            ('campaign_id', '=', self.id)
-        ])
-        publish_dates = email_records.mapped('publish_date')
-
-        publish_dates_str = [dt.strftime("%Y-%m-%d %H:%M:%S") for dt in publish_dates if dt]
-
-        return publish_dates_str
+        instagram_records = self.env['social.instagram'].search([('campaign_id', '=', self.id)])
+        publish_dates = instagram_records.mapped('publish_date')
+        return [dt.strftime("%Y-%m-%d %H:%M:%S") for dt in publish_dates if dt]
 
     def get_x_publish_dates(self):
+        """Get all X (Twitter) publish dates for this campaign."""
         self.ensure_one()
-
-        email_records = self.env['social.x'].search([
-            ('campaign_id', '=', self.id)
-        ])
-        publish_dates = email_records.mapped('publish_date')
-
-        publish_dates_str = [dt.strftime("%Y-%m-%d %H:%M:%S") for dt in publish_dates if dt]
-
-        return publish_dates_str
+        x_records = self.env['social.x'].search([('campaign_id', '=', self.id)])
+        publish_dates = x_records.mapped('publish_date')
+        return [dt.strftime("%Y-%m-%d %H:%M:%S") for dt in publish_dates if dt]
 
     def get_facebook_publish_dates(self):
+        """Get all Facebook publish dates for this campaign."""
         self.ensure_one()
+        facebook_records = self.env['social.facebook'].search([('campaign_id', '=', self.id)])
+        publish_dates = facebook_records.mapped('publish_date')
+        return [dt.strftime("%Y-%m-%d %H:%M:%S") for dt in publish_dates if dt]
 
-        email_records = self.env['social.facebook'].search([
-            ('campaign_id', '=', self.id)
-        ])
-        publish_dates = email_records.mapped('publish_date')
-
-        publish_dates_str = [dt.strftime("%Y-%m-%d %H:%M:%S") for dt in publish_dates if dt]
-
-        return publish_dates_str
+    def extract_json_content(self, text):
+        """Extracts the JSON content by removing characters before the first '{' and after the last '}'."""
+        start_index = text.find('{')
+        end_index = text.rfind('}')
+        if start_index != -1 and end_index != -1:
+            return text[start_index:end_index + 1]
+        return ""
 
     def generate_email_prompt(self, context, tags):
-
+        """Generate prompt for email content creation."""
         company_name = self.company_id.name if self.company_id else "our company"
-
         images = ", ".join(self.image_ids.mapped('urldes')) if self.image_ids else "no images"
-
-        # Extract product tags or set a default
-        product_tags = ", ".join(
-            self.optional_product_tags.mapped('name')) if self.optional_product_tags else "products"
-
-        # Extract content strategy or set a default
+        links = ", ".join(self.link_ids.mapped('urldes')) if self.link_ids else "no links"
+        base_url = self.env['ir.config_parameter'].sudo().get_param('web.base.url')
+        onlineShop = f"{base_url}/shop/"
         content_strategy = self.content_strategy if self.content_strategy else "general"
 
-        # Get campaign start and end dates
+        # Generate tracked links for all products
+        tracked_product_links = []
+        if self.product_tags:
+            for product in self.product_tags:
+                product_url = f"{base_url}/shop/product/{product.id}"
+                tracked_url = self.generate_tracked_link(product_url, 'Email', 'Email')
+                tracked_product_links.append(f"- {product.name}: {tracked_url}")
+
+        # Format product information
+        if tracked_product_links:
+            product_list = "\n".join([
+                f"{product.name} ({product.description or 'No description'})"
+                for product in self.product_tags
+            ])
+            product_links = "\n".join(tracked_product_links)
+        else:
+            product_list = "no specific products"
+            product_links = "no product links"
+
         start_date1 = self.start_date
         end_date1 = self.end_date
-
-        #Todays Date
         today = date.today()
-        print(today)
-
-        # Get email publish dates and format as a string
         date_with_content_list = self.get_email_publish_dates()
         date_with_content_str = ", ".join(date_with_content_list) if date_with_content_list else "None"
-        print(date_with_content_str)
-        # Define the AI prompt
+
         prompt_template = f"""
         You are an AI Email Marketing Assistant. Your task is to generate a JSON-formatted marketing email with HTML content that is engaging, persuasive, and aligned with the given campaign details.
 
@@ -283,11 +579,14 @@ class MarketingCampaign(models.Model):
     - **Context:** {context}
     - **Tags:** {tags}
     - **Company Name:** {company_name}
-    - **Product Tags:** {product_tags}
+    - **Product Tags:** {product_list}
+    - **The Only Products link to our store**: {product_links}
     - **Content Strategy:** {content_strategy}
     - **Avoid Posting On:** {date_with_content_str}
     - **The Only Images**: {images}
+    - **The Only Links**: {links}
     - **The Date of Today:** {today}
+    - **Link to our Online Shop:** {onlineShop}
 
     **Instructions:**
     - Craft a **compelling subject line** that encourages email opens.
@@ -309,36 +608,8 @@ class MarketingCampaign(models.Model):
         "html_content": "<Complete HTML email content with inline CSS styling>"
     }}
     ```
-
-    **HTML Requirements:**
-    - Create a clean, professional design with responsive layout
-    - Use inline CSS for styling (no external stylesheets)
-    - Ensure compatibility with major email clients
-    - Include appropriate spacing, colors, and formatting
-    - Create visually distinct sections for introduction, details, and CTA
-    - Use appropriate HTML tags for semantic structure
-    - Include placeholder text for images with descriptive alt text
-
-    **Marketing Requirements:**
-    - Follow a **persuasive marketing tone** tailored to the provided context and audience
-    - Optimize for readability, engagement, and conversion
-    - Ensure the response is a **valid JSON object** with no extraneous text or formatting
         """
-
         return prompt_template
-
-    def extract_json_content(self,text):
-        """Extracts the JSON content by removing characters before the first '{' and after the last '}'."""
-        # Find the index of the first '{' and the last '}'
-        start_index = text.find('{')
-        end_index = text.rfind('}')
-
-        # If both '{' and '}' are found, return the substring between them
-        if start_index != -1 and end_index != -1:
-            return text[start_index:end_index + 1]
-
-        # If no valid JSON content is found, return an empty string
-        return ""
 
     def action_generate_email_content(self):
         """Generate AI-powered email content and save it as a new record in the social.email model."""
@@ -348,48 +619,61 @@ class MarketingCampaign(models.Model):
         context = self.context
         tags = ", ".join(self.tag_ids.mapped('name'))
         email_prompt = self.generate_email_prompt(context, tags)
-
         try:
-            # Generate content using the AI model
             gen = genai.GenerativeModel('gemini-1.5-flash')
             response = gen.generate_content(email_prompt)
-            print(response)
             try:
-                r=self.extract_json_content(response.text)
+                r = self.extract_json_content(response.text)
                 email_data = json.loads(r)
             except json.JSONDecodeError as e:
-                print(f"JSON Decode Error: {str(e)}")
-                raise ValueError(f"Invalid JSON response from AI model: {str(e)}")
+                raise UserError(_("Invalid JSON response from AI model: %s", str(e)))
+
             format = "%Y-%m-%d %H:%M:%S"
             date_object = datetime.strptime(email_data.get("date_of_post"), format)
-            print(date_object)
             self.env['social.email'].create({
                 'campaign_id': self.id,
-                'name': email_data.get("subject_line",""),
-                'publish_date':date_object,
-                'content': f"""
-                    {email_data.get("html_content", "")}
-                """.strip(),  # Combine all parts of the email content
+                'name': email_data.get("subject_line", ""),
+                'publish_date': date_object,
+                'content': email_data.get("html_content", "").strip(),
             })
-            print(self.get_email_publish_dates())
-            self.message_post(body="New AI-generated email content has been created successfully.")
+
+            self.message_post(body=_("New AI-generated email content has been created successfully."))
         except Exception as e:
-            self.message_post(body=f"Error generating email content: {str(e)}")
+            self.message_post(body=_("Error generating email content: %s", str(e)))
+            raise UserError(_("Error generating email content: %s", str(e)))
 
     def generate_facebook_prompt(self, context, tags):
-        # Extract company details safely
+        """Generate prompt for Facebook content creation."""
         company_name = self.company_id.name if self.company_id else "our company"
-        product_tags = ", ".join(
-            self.optional_product_tags.mapped('name')) if self.optional_product_tags else "products"
         content_strategy = self.content_strategy if self.content_strategy else "general"
+        base_url = self.env['ir.config_parameter'].sudo().get_param('web.base.url')
+        links = ", ".join(self.link_ids.mapped('urldes')) if self.link_ids else "no links"
 
-        # Get campaign start and end dates
+        # Generate tracked links for all products
+        tracked_product_links = []
+        if self.product_tags:
+            for product in self.product_tags:
+                product_url = f"{base_url}/shop/product/{product.id}"
+                tracked_url = self.generate_tracked_link(product_url, 'social', 'Facebook')
+                tracked_product_links.append(f"- {product.name}: {tracked_url}")
+
+        # Format product information
+        if tracked_product_links:
+            product_list = "\n".join([
+                f"{product.name} ({product.description or 'No description'})"
+                for product in self.product_tags
+            ])
+            product_links = "\n".join(tracked_product_links)
+        else:
+            product_list = "no specific products"
+            product_links = "no product links"
+
         start_date1 = self.start_date
         end_date1 = self.end_date
-        today=date.today()
+        today = date.today()
         date_with_content_list = self.get_facebook_publish_dates()
         date_with_content_str = ", ".join(date_with_content_list) if date_with_content_list else "None"
-        print(date_with_content_str)
+
         prompt_template = f"""
         You are a **Social Media Marketing Assistant**. Your task is to create a **highly engaging Facebook post** that aligns with the marketing campaign details and drives audience interaction.
 
@@ -399,10 +683,13 @@ class MarketingCampaign(models.Model):
         - **Context:** {context}
         - **Tags:** {tags}
         - **Company Name:** {company_name}
-        - **Product Tags:** {product_tags}
+        - **Product Tags:** {product_list}
+        - **The Only product links to our store:** {product_links}
         - **Content Strategy:** {content_strategy}
         - **Avoid Posting On:** {date_with_content_str}
+        - **The Only Links**: {links}
         - **The Date of Today:** {today}
+        - **Link to our Online Shop:** {base_url}/shop/
 
         ### **Post Requirements**
         - **Headline:** Craft an attention-grabbing, scroll-stopping headline.
@@ -410,32 +697,19 @@ class MarketingCampaign(models.Model):
         - **Call-to-Action (CTA):** Encourage users to take action (e.g., visit a website, comment, share, or make a purchase).
         - **Hashtags:** Include strategic and trending hashtags to maximize reach and visibility.
 
-        ### **Tone & Style**
-        - Ensure the **tone aligns with {company_name}'s brand identity**.
-        - Follow the **{content_strategy}** strategy for consistency across campaigns.
-        - Adapt the post style for **maximum engagement on Facebook**.
-
-        **Additional Considerations:**
-        - Optimize post length for Facebook's algorithm (~40-80 words for engagement).
-        - If relevant, suggest a high-quality image or video idea that enhances the post.
-        - Ensure the post follows Facebook’s **best practices** for organic reach.
-
         Please return the Facebook post **as a structured JSON object** in the following format:
 
         ```json
         {{
             "headline": "<Catchy headline>",
-            "body_text": "<Engaging post with emojis>",
+            "body_text": "<Engaging post with emojis include the links here>",
             "call_to_action": "<Clear CTA>",
             "hashtags": "<Relevant hashtags>",
             "suggested_post_date": "<YYYY-MM-DD HH:MM:SS>",
             "media_suggestion": "<Optional: Image/video idea>"
         }}
         ```
-
-        Ensure that the output is **valid JSON**, without any extra text or formatting outside of the JSON object.
         """
-
         return prompt_template
 
     def action_generate_facebook_content(self):
@@ -453,85 +727,106 @@ class MarketingCampaign(models.Model):
             try:
                 r = self.extract_json_content(response.text)
                 facebook_data = json.loads(r)
-                print(facebook_data)
             except json.JSONDecodeError as e:
-                print(f"JSON Decode Error: {str(e)}")
-                raise ValueError(f"Invalid JSON response from AI model: {str(e)}")
+                raise UserError(_("Invalid JSON response from AI model: %s", str(e)))
+
             format = "%Y-%m-%d %H:%M:%S"
             date_object = datetime.strptime(facebook_data.get("suggested_post_date"), format)
-            self.env['social.facebook'].create({
+            fb_post = self.env['social.facebook'].create({
                 'campaign_id': self.id,
                 'name': facebook_data.get("headline", ""),
                 'publish_date': date_object,
                 'content': f"""
-                                {facebook_data.get("body_text", "")}
-                                {facebook_data.get("call_to_action", "")}
-                                {facebook_data.get("hashtags", "")}
-                            """.strip(),  # Combine all parts of the email content
+                    {facebook_data.get("body_text", "")}
+                    {facebook_data.get("call_to_action", "")}
+                    {facebook_data.get("hashtags", "")}
+                """.strip(),
             })
 
-        except Exception as e:
-            self.message_post(body=f"Error generating Facebook content: {str(e)}")
+            if self.image_ids:
+                fb_post.write({
+                    'image_ids': [(6, 0, self.image_ids.ids)]
+                })
 
-        self.message_post(body="New AI-generated Facebook content has been created successfully.")
+            self.message_post(body=_("New AI-generated Facebook content has been created successfully."))
+        except Exception as e:
+            self.message_post(body=_("Error generating Facebook content: %s", str(e)))
+            raise UserError(_("Error generating Facebook content: %s", str(e)))
 
     def generate_instagram_prompt(self, context, tags):
-
+        """Generate prompt for Instagram content creation."""
         company_name = self.company_id.name if self.company_id else "our company"
-        product_tags = ", ".join(
-            self.optional_product_tags.mapped('name')) if self.optional_product_tags else "products"
         content_strategy = self.content_strategy if self.content_strategy else "general"
+        base_url = self.env['ir.config_parameter'].sudo().get_param('web.base.url')
+        onlineShop = self.generate_tracked_link(f"{base_url}/shop/", 'social', 'Instagram')
+        links = ", ".join(self.link_ids.mapped('urldes')) if self.link_ids else "no links"
 
-        # Get campaign start and end dates
+        # Generate tracked links for all products
+        tracked_product_links = []
+        if self.product_tags:
+            for product in self.product_tags:
+                product_url = f"{base_url}/shop/product/{product.id}"
+                tracked_url = self.generate_tracked_link(product_url, 'social', 'Instagram')
+                tracked_product_links.append(f"- {product.name}: {tracked_url}")
+
+        # Format product information
+        if tracked_product_links:
+            product_list = "\n".join([
+                f"{product.name} ({product.description or 'No description'})"
+                for product in self.product_tags
+            ])
+            product_links = "\n".join(tracked_product_links)
+        else:
+            product_list = "no specific products"
+            product_links = "no product links"
+
         start_date1 = self.start_date
         end_date1 = self.end_date
         today = date.today()
-        # Get restricted posting dates
         date_with_content_list = self.get_instagram_publish_dates()
         date_with_content_str = ", ".join(date_with_content_list) if date_with_content_list else "None"
-        print(date_with_content_str)
+
         prompt_template = f"""
-        You are a **Social Media Marketing Assistant**. Your task is to create a **highly engaging Instagram post** that aligns with the marketing campaign details and drives audience interaction.
+        You are a **Social Media Marketing Assistant AI**. Your role is to generate a **high-converting Instagram post** for the campaign described below. The post should follow best practices for engagement, storytelling, and brand alignment.
 
-        ### **Campaign Details**
-        - **Start Date:** {start_date1}
-        - **End Date:** {end_date1}
-        - **Context:** {context}
-        - **Tags:** {tags}
+        ### 📋 Campaign Details:
         - **Company Name:** {company_name}
-        - **Product Tags:** {product_tags}
+        - **Campaign Start Date:** {start_date1}
+        - **Campaign End Date:** {end_date1}
+        - **Campaign Context:** {context}
         - **Content Strategy:** {content_strategy}
+        - **Tags:** {tags}
         - **Avoid Posting On:** {date_with_content_str}
-        - **The Date of Today:** {today}
+        - **Today's Date:** {today}
 
-        ### **Post Requirements**
-        - **Caption:** Write a compelling and engaging caption with a mix of storytelling and brand messaging.
-        - **Emojis:** Use emojis 🎯🔥🚀 to make the post visually appealing and engaging.
-        - **Call-to-Action (CTA):** Encourage interaction (e.g., "Tag a friend," "Swipe up," "DM us").
-        - **Hashtags:** Include trending and relevant hashtags to increase reach.
-        - **Image Idea (Optional):** Suggest an ideal image or video concept that fits the post.
+        ---
 
-        ### **Tone & Style**
-        - Ensure the **tone aligns with {company_name}'s brand identity**.
-        - Follow the **{content_strategy}** strategy for consistency across campaigns.
-        - Adapt the post style for **maximum engagement on Instagram**.
+        ### 🛍️ Products & Links:
+        - **Featured Products:**  
+        {product_list}
 
-        **Please return the Instagram post in the following structured JSON format:**
+        - **Required Product Links (must be included):**  
+        {product_links}
+
+        - **Online Shop (include link if relevant):** {onlineShop}
+        - **Additional Campaign Links:** {links}
+
+
+        ### 🧠 Your Output Must Include:
+        Return your response in the **following strict JSON format** with high-quality content:
 
         ```json
         {{
-            "headline": "<Catchy headline>",
-            "caption": "<Engaging caption with emojis>",
-            "call_to_action": "<Clear CTA>",
-            "hashtags": "<Relevant hashtags>",
-            "suggested_post_date": "<YYYY-MM-DD HH:MM:SS>",
-            "media_suggestion": "<Optional: Image/video idea>"
+          "headline": "<Catchy, bold headline that grabs attention>",
+          "caption": "<Story-driven caption that connects emotionally, includes emojis 🎯🔥🚀, and aligns with the brand voice>",
+          "call_to_action": "<Interactive CTA such as 'Tag a friend', 'DM us for details', etc.>",
+          "Links":"<Put the links here in presentable manner to put directly in the description of the post>",
+          "hashtags": "<A list of 5–10 relevant and trending hashtags>",
+          "suggested_post_date": "<A future date (YYYY-MM-DD HH:MM:SS) that avoids the listed blocked dates>",
+          "media_suggestion": "<Optional: Describe an ideal image or video that matches the post theme>"
         }}
         ```
-
-        Ensure that the output is **valid JSON**, without any extra text or formatting outside of the JSON object.
         """
-
         return prompt_template
 
     def action_generate_instagram_content(self):
@@ -543,56 +838,72 @@ class MarketingCampaign(models.Model):
         tags = ", ".join(self.tag_ids.mapped('name'))
         instagram_prompt = self.generate_instagram_prompt(context, tags)
 
-        print("Generated Instagram Prompt:\n", instagram_prompt)
-
         try:
             gen = genai.GenerativeModel('gemini-1.5-flash')
             response = gen.generate_content(instagram_prompt)
             try:
                 r = self.extract_json_content(response.text)
                 instagram_data = json.loads(r)
-                print(instagram_data)
             except json.JSONDecodeError as e:
-                print(f"JSON Decode Error: {str(e)}")
-                raise ValueError(f"Invalid JSON response from AI model: {str(e)}")
+                raise UserError(_("Invalid JSON response from AI model: %s", str(e)))
+
             format = "%Y-%m-%d %H:%M:%S"
             date_object = datetime.strptime(instagram_data.get("suggested_post_date"), format)
-            self.env['social.instagram'].create({
+            ig_post = self.env['social.instagram'].create({
                 'campaign_id': self.id,
                 'name': instagram_data.get("headline", ""),
                 'publish_date': date_object,
                 'caption': f"""
-                                {instagram_data.get("caption", "")}
-                                {instagram_data.get("call_to_action", "")}
-                                {instagram_data.get("hashtags", "")}
-                            """.strip(),  # Combine all parts of the email content
+                    {instagram_data.get("caption", "")}
+                    {instagram_data.get("call_to_action", "")}
+                    {instagram_data.get("Links", "")}
+                    {instagram_data.get("hashtags", "")}
+                """.strip(),
             })
 
-        except Exception as e:
-            self.message_post(body=f"Error generating Facebook content: {str(e)}")
+            if self.image_ids:
+                ig_post.write({
+                    'image_ids': [(6, 0, self.image_ids.ids)]
+                })
 
-        self.message_post(body="New AI-generated Facebook content has been created successfully.")
+            self.message_post(body=_("New AI-generated Instagram content has been created successfully."))
+        except Exception as e:
+            self.message_post(body=_("Error generating Instagram content: %s", str(e)))
+            raise UserError(_("Error generating Instagram content: %s", str(e)))
 
     def generate_x_prompt(self, context, tags):
-        """Generate a structured and engaging Twitter (X) post prompt for AI."""
-
-        # Extract company details safely
+        """Generate prompt for Twitter (X) content creation."""
+        base_url = self.env['ir.config_parameter'].sudo().get_param('web.base.url')
+        onlineShop = f"{base_url}/shop/"
         company_name = self.company_id.name if self.company_id else "our company"
-        product_tags = ", ".join(
-            self.optional_product_tags.mapped('name')) if self.optional_product_tags else "products"
         content_strategy = self.content_strategy if self.content_strategy else "general"
+        links = ", ".join(self.link_ids.mapped('urldes')) if self.link_ids else "no links"
 
-        # Get campaign start and end dates
+        # Generate tracked links for all products
+        tracked_product_links = []
+        if self.product_tags:
+            for product in self.product_tags:
+                product_url = f"{base_url}/shop/product/{product.id}"
+                tracked_url = self.generate_tracked_link(product_url, 'social', 'Twitter')
+                tracked_product_links.append(f"- {product.name}: {tracked_url}")
+
+        # Format product information
+        if tracked_product_links:
+            product_list = "\n".join([
+                f"{product.name} ({product.description or 'No description'})"
+                for product in self.product_tags
+            ])
+            product_links = "\n".join(tracked_product_links)
+        else:
+            product_list = "no specific products"
+            product_links = "no product links"
+
         start_date1 = self.start_date
         end_date1 = self.end_date
-
-        # Get restricted posting dates
         date_with_content_list = self.get_x_publish_dates()
         date_with_content_str = ", ".join(date_with_content_list) if date_with_content_list else "None"
         today = date.today()
-        print(date_with_content_str)
 
-        # Define the AI prompt
         prompt_template = f"""
         You are a **Twitter (X) Marketing Assistant**. Your task is to create a **highly engaging tweet** that aligns with the marketing campaign details and encourages user engagement.
 
@@ -602,10 +913,13 @@ class MarketingCampaign(models.Model):
         - **Context:** {context}
         - **Tags:** {tags}
         - **Company Name:** {company_name}
-        - **Product Tags:** {product_tags}
+        - **Product Tags:** {product_list}
+        - **The Only product links to our store:** {product_links}
         - **Content Strategy:** {content_strategy}
         - **Avoid Posting On:** {date_with_content_str}
+        - **The Only Links**: {links}
         - **The Date of Today:** {today}
+        - **Link to our Online Shop:** {onlineShop}
 
         ### **Tweet Requirements**
         - **Text Length:** Ensure the tweet is within **280 characters**.
@@ -614,20 +928,16 @@ class MarketingCampaign(models.Model):
         - **Media:** If applicable, suggest an image or GIF.
         - **Tone & Style:** Ensure the tweet is **witty, concise, and brand-aligned**.
 
-        **Please return the tweet in the following structured JSON format:**
+        Please return the tweet in the following structured JSON format:
 
         ```json
         {{  
-            "title": "<Tweet Title>"
+            "title": "<Tweet Title>",
             "tweet_text": "<Engaging tweet within 280 characters>",
             "hashtags": ["#example", "#marketing"],
             "suggested_send_time": "<YYYY-MM-DD HH:MM:SS>"
         }}
-        ```
-
-        Ensure that the output is **valid JSON**, without any extra text or formatting outside of the JSON object.
         """
-
         return prompt_template
 
     def action_generate_x_content(self):
@@ -639,8 +949,6 @@ class MarketingCampaign(models.Model):
         tags = ", ".join(self.tag_ids.mapped('name'))
         x_prompt = self.generate_x_prompt(context, tags)
 
-        print("Generated Twitter Prompt:\n", x_prompt)
-
         try:
             gen = genai.GenerativeModel('gemini-1.5-flash')
             response = gen.generate_content(x_prompt)
@@ -648,23 +956,23 @@ class MarketingCampaign(models.Model):
             try:
                 r = self.extract_json_content(response.text)
                 x_data = json.loads(r)
-                print(x_data)
             except json.JSONDecodeError as e:
-                print(f"JSON Decode Error: {str(e)}")
-                raise ValueError(f"Invalid JSON response from AI model: {str(e)}")
+                raise UserError(_("Invalid JSON response from AI model: %s", str(e)))
 
             format = "%Y-%m-%d %H:%M:%S"
             date_object = datetime.strptime(x_data.get("suggested_send_time"), format)
-            print(date_object)
-            self.env['social.x'].create({
+            x_post = self.env['social.x'].create({
                 'campaign_id': self.id,
                 'name': x_data.get("title", ""),
                 'publish_date': date_object,
                 'caption': x_data.get("tweet_text", ""),
             })
+            if self.image_ids:
+                x_post.write({
+                    'image_ids': [(6, 0, self.image_ids.ids)]
+                })
 
+            self.message_post(body=_("New AI-generated Twitter content has been created successfully."))
         except Exception as e:
-            self.message_post(body=f"Error generating Twitter content: {str(e)}")
-
-        self.message_post(body="New AI-generated Twitter content has been created successfully.")
-
+            self.message_post(body=_("Error generating Twitter content: %s", str(e)))
+            raise UserError(_("Error generating Twitter content: %s", str(e)))

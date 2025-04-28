@@ -1,0 +1,60 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<odoo>
+
+    <record id="view_marketing_campaign_cost_form" model="ir.ui.view">
+        <field name="name">marketing.campaign.cost.form</field>
+        <field name="model">marketing.campaign.cost</field>
+        <field name="arch" type="xml">
+            <form string="Campaign Cost">
+                <sheet>
+                    <group>
+                        <group>
+                            <field name="name" placeholder="Cost Title"/>
+                            <field name="campaign_id"/>
+                            <field name="date"/>
+                        </group>
+                        <group>
+                            <field name="cost_type"/>
+                            <field name="amount"/>
+                        </group>
+                    </group>
+                    <notebook>
+                        <page string="Notes">
+                            <field name="notes" placeholder="Add additional notes or details about this cost..."/>
+                        </page>
+                    </notebook>
+                </sheet>
+            </form>
+        </field>
+    </record>
+
+
+    <record id="view_marketing_campaign_cost_tree" model="ir.ui.view">
+        <field name="name">marketing.campaign.cost.tree</field>
+        <field name="model">marketing.campaign.cost</field>
+        <field name="arch" type="xml">
+            <tree string="Campaign Costs" editable="bottom">
+                <field name="campaign_id"/>
+                <field name="date"/>
+                <field name="name"/>
+                <field name="cost_type"/>
+                <field name="amount" sum="Total"/>
+                <field name="notes"/>
+            </tree>
+        </field>
+    </record>
+
+    <record id="action_marketing_campaign_cost" model="ir.actions.act_window">
+        <field name="name">Campaign Costs</field>
+        <field name="res_model">marketing.campaign.cost</field>
+        <field name="view_mode">tree,form</field>
+        <field name="help" type="html">
+            <p class="o_view_nocontent_smiling_face">
+                Create your first campaign cost
+            </p>
+            <p>
+                Track all expenses related to your marketing campaigns.
+            </p>
+        </field>
+    </record>
+</odoo>

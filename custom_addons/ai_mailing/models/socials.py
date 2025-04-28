@@ -1,6 +1,6 @@
 import json
 from requests_oauthlib import OAuth1
-from odoo import models, fields, api
+from odoo import models, fields, api, _
 from dotenv import load_dotenv
 import os
 from datetime import datetime
@@ -31,12 +31,24 @@ class SocialEmail(models.Model):
     )
     email_addresses = fields.Char(string="Email Addresses", compute="_compute_email_addresses", readonly=True)
     publish_date = fields.Datetime(string="Publish Date")
-    mailing_id = fields.Many2one('mailing.mailing', string='Mass Mailing', ondelete='set null')
+    mailing_ids = fields.One2many('mailing.mailing', 'social_email_id', string='Mass Mailings')
 
+
+    def action_view_content(self):
+        """Open the form view for this email record."""
+        self.ensure_one()
+        return {
+            'type': 'ir.actions.act_window',
+            'name': _('View Email Content'),
+            'res_model': 'social.email',
+            'view_mode': 'form',
+            'res_id': self.id,
+            'target': 'current',
+        }
     @api.depends("recipient_ids")
     def _compute_email_addresses(self):
         for record in self:
-            record.email_addresses = ', '.join(record.recipient_ids.mapped('email'))
+            record.email_addresses = ', '.join(record.recipient_ids.mapped('email')) if record.recipient_ids else ''
 
     def action_confirm(self):
         """Mark message as scheduled and create mass mailing with personalized content."""
@@ -46,33 +58,28 @@ class SocialEmail(models.Model):
         if not recipient_ids:
             raise UserError("No recipients selected for the email.")
 
-        # Create a mailing.mailing record
-        personalized_contents = []
+        # Create a mailing.mailing record for each recipient
         for recipient in self.recipient_ids:
             personalized_content = self.content.replace('{name}', recipient.name)
-            personalized_contents.append((personalized_content, recipient.id))
 
-        # Create a mailing.mailing record with the first recipient's content
-        for personalized_content in personalized_contents:
-            print(personalized_content)
             vals = {
                 'subject': self.name,
-                'body_html': personalized_content[0] if personalized_content[0] else self.content,
-                'mailing_model_id':self.env['ir.model']._get('res.partner').id,
-                # Adjust to correct mailing model
-                'mailing_domain': [('list_ids', '=', personalized_content[1])],  # Correct the domain filter
+                'body_html': personalized_content,
+                'mailing_model_id': self.env['ir.model']._get('res.partner').id,
+                'mailing_domain': [('id', '=', recipient.id)],  # Send to this specific recipient
                 'reply_to_mode': 'new',
                 'schedule_date': self.publish_date,
                 'state': 'draft',
+                'social_email_id': self.id,  # Associate with the current SocialEmail record
             }
-            mailing = self.env['mailing.mailing'].create(vals)
-            self.write({
-                'mailing_id': mailing.id,
-                'mail_scheduling_status': 'scheduled'
-            })
+            self.env['mailing.mailing'].create(vals)
+
+        # Update the scheduling status
+        self.write({
+            'mail_scheduling_status': 'scheduled'
+        })
 
         self.message_post(body=f"Email scheduled for {self.publish_date}")
-
     @api.model
     def cron_check_status_emails(self):
         """Cron job to send scheduled emails using mailing.mailing."""
@@ -83,20 +90,27 @@ class SocialEmail(models.Model):
         ])
         for email in emails:
             try:
-                # Put mailing in queue for sending
-                email.mailing_id.action_put_in_queue()
-                # Actually send the emails
-                email.mailing_id.action_send_mail()
+                # Process all mailing.mailing records associated with this SocialEmail
+                for mailing in email.mailing_ids:
+                    # Put mailing in queue for sending
+                    mailing.action_put_in_queue()
+                    # Actually send the emails
+                    mailing.action_send_mail()
+
+                # Update the status to 'sent'
                 email.write({'mail_scheduling_status': 'sent'})
-                email.message_post(body="Email message queued for sending via mailing.mailing!")
+                email.message_post(body="Email messages queued for sending via mailing.mailing!")
             except Exception as e:
+                # Update the status to 'failed' if an error occurs
                 email.write({'mail_scheduling_status': 'failed'})
                 email.message_post(body=f"Failed to send Email: {str(e)}")
 
     def action_cancel(self):
-        """Cancel a scheduled email"""
-        record = self.env['mailing.mailing'].browse(self.mailing_id.id)
-        record.unlink()
+        """Cancel all scheduled emails."""
+        self.ensure_one()
+        # Delete all associated mailing.mailing records
+        self.mailing_ids.unlink()
+        # Update the status to 'draft'
         self.write({'mail_scheduling_status': 'draft'})
         self.message_post(body="Email scheduling cancelled")
 
@@ -121,6 +135,18 @@ class SocialX(models.Model):
         ('failed', 'Scheduling Failed')
     ], string="Scheduling Status", default='draft')
 
+    def action_view_content(self):
+        """Open the form view for this X (Twitter) post."""
+        self.ensure_one()
+        return {
+            'type': 'ir.actions.act_window',
+            'name': _('View X Post'),
+            'res_model': 'social.x',
+            'view_mode': 'form',
+            'res_id': self.id,
+            'target': 'current',
+        }
+
     def action_confirm(self):
         """Mark tweet as scheduled to be processed by cron"""
         self.write({'x_scheduling_status': 'scheduled'})
@@ -138,59 +164,140 @@ class SocialX(models.Model):
         for post in posts:
             post.schedule_tweet()  # Publish each post
 
+    def _post_tweet(self, text, media_ids=None, reply_to_tweet_id=None):
+        """Helper method to post a single tweet"""
+        auth = OAuth1(
+            os.getenv("CUSTOMER_KEY"),
+            os.getenv("CUSTOMER_KEY_SECRET"),
+            os.getenv("X_ACCESS_TOKEN"),
+            os.getenv("X_ACCESS_TOKEN_SECRET")
+        )
+
+        payload = {"text": text}
+        if media_ids:
+            payload["media"] = {"media_ids": media_ids}
+        if reply_to_tweet_id:
+            payload["reply"] = {"in_reply_to_tweet_id": reply_to_tweet_id}
+
+        response = requests.post(
+            "https://api.twitter.com/2/tweets",
+            json=payload,
+            headers={"Content-Type": "application/json"},
+            auth=auth
+        )
+
+        response.raise_for_status()
+        return response.json()
+
+    def _upload_media(self, image_url):
+        """Upload media to Twitter and return media_id"""
+        auth = OAuth1(
+            os.getenv("CUSTOMER_KEY"),
+            os.getenv("CUSTOMER_KEY_SECRET"),
+            os.getenv("X_ACCESS_TOKEN"),
+            os.getenv("X_ACCESS_TOKEN_SECRET")
+        )
+
+        try:
+            image_content = requests.get(image_url).content
+            response = requests.post(
+                "https://upload.twitter.com/1.1/media/upload.json",
+                files={'media': ('image.jpg', image_content, 'image/jpeg')},
+                auth=auth
+            )
+            response.raise_for_status()
+            return response.json().get("media_id_string")
+        except Exception as e:
+            print(f"Failed to upload media: {str(e)}")
+            raise UserError(_("Failed to upload image: %s") % str(e))
+
     def schedule_tweet(self):
-        """Create and publish a tweet with or without images"""
+        """Create and publish a tweet thread if content exceeds 280 chars"""
         try:
             if self.scheduled_tweet_id:
                 return  # Already processed
 
-            tweet_text = f"{self.name}\n\n{self.caption}"
+            # Prepare base text (name + caption)
+            base_text = f"{self.name}\n\n" if self.name else ""
+            full_text = base_text + (self.caption or "")
 
-            # OAuth 1.0a Authentication
-            auth = OAuth1(
-                os.getenv("CUSTOMER_KEY"),
-                os.getenv("CUSTOMER_KEY_SECRET"),
-                os.getenv("X_ACCESS_TOKEN"),
-                os.getenv("X_ACCESS_TOKEN_SECRET")
-            )
-
-            headers = {"Content-Type": "application/json"}
+            # Upload media if exists (only for first tweet in thread)
             media_ids = []
-
             if self.image_ids:
                 for image in self.image_ids:
-                    try:
-                        image_content = requests.get(image.url).content
-                        media_url = "https://upload.twitter.com/1.1/media/upload.json"
-                        files = {'media': ('image.jpg', image_content, 'image/jpeg')}
-                        media_response = requests.post(media_url, files=files, auth=auth)
-                        media_data = media_response.json()
+                    media_id = self._upload_media(image.url)
+                    if media_id:
+                        media_ids.append(media_id)
 
-                        if "media_id_string" in media_data:
-                            media_ids.append(media_data["media_id_string"])
+            # Split text into tweet-sized chunks
+            chunks = []
+            current_chunk = ""
+
+            # Split by paragraphs if possible
+            paragraphs = full_text.split('\n')
+            for para in paragraphs:
+                if len(current_chunk) + len(para) + 1 < 280:  # +1 for newline
+                    current_chunk += para + '\n'
+                else:
+                    if current_chunk:
+                        chunks.append(current_chunk.strip())
+                    current_chunk = para + '\n' if len(para) < 280 else para[:280]
+
+            if current_chunk:
+                chunks.append(current_chunk.strip())
+
+            # Ensure no chunk exceeds 280 chars (fallback)
+            final_chunks = []
+            for chunk in chunks:
+                while len(chunk) > 280:
+                    final_chunks.append(chunk[:280])
+                    chunk = chunk[280:]
+                final_chunks.append(chunk)
+
+            # Post thread
+            previous_tweet_id = None
+            for i, chunk in enumerate(final_chunks):
+                try:
+                    # Only attach media to first tweet
+                    current_media = media_ids if i == 0 else None
+
+                    response = self._post_tweet(
+                        text=chunk,
+                        media_ids=current_media,
+                        reply_to_tweet_id=previous_tweet_id
+                    )
+
+                    tweet_id = response.get("data", {}).get("id")
+                    if tweet_id:
+                        previous_tweet_id = tweet_id
+                        if i == 0:  # First tweet in thread
+                            self.write({
+                                'scheduled_tweet_id': tweet_id,
+                                'x_scheduling_status': 'published',
+                                'is_published': True
+                            })
+                            self.message_post(body=_("First tweet in thread published (ID: %s)") % tweet_id)
                         else:
-                            self.message_post(body=f"Warning: Failed to upload image: {media_data}")
-                    except Exception as img_err:
-                        self.message_post(body=f"Error uploading image: {str(img_err)}")
+                            self.message_post(body=_("Thread continuation published (ID: %s)") % tweet_id)
+                except Exception as e:
+                    print(f"Failed to post tweet {i + 1}/{len(final_chunks)}: {str(e)}")
+                    raise UserError(_("Failed to post tweet %d/%d: %s") % (i + 1, len(final_chunks), str(e)))
 
-            # Prepare payload
-            payload = {"text": tweet_text}
-            if media_ids:
-                payload["media"] = {"media_ids": media_ids}
-
-            api_url = "https://api.twitter.com/2/tweets"
-            response = requests.post(api_url, json=payload, headers=headers, auth=auth)
-            response_data = response.json()
-
-            if "data" in response_data and "id" in response_data["data"]:
-                self.write({'scheduled_tweet_id': response_data["data"]["id"], 'x_scheduling_status': 'published'})
-                self.message_post(body=f"Tweet{' with images' if media_ids else ''} successfully published!")
-            else:
-                raise Exception(response_data.get('errors', [{}])[0].get('message', 'Unknown error'))
+            if not previous_tweet_id:
+                raise UserError(_("No tweets were published in the thread"))
 
         except Exception as e:
             self.write({'x_scheduling_status': 'failed'})
-            self.message_post(body=f"Failed to publish tweet: {str(e)}")
+            self.message_post(body=_("Failed to publish tweet thread: %s") % str(e))
+            print("Tweet thread failed: %s", str(e), exc_info=True)
+            raise
+
+        except Exception as e:
+            error_msg = f"Failed to publish tweet: {str(e)}"
+            self.write({'x_scheduling_status': 'failed'})
+            self.message_post(body=error_msg)
+            print(error_msg)  # Log the error for debugging
+            raise  # Re-raise the exception for further handling if needed
 
     def action_cancel(self):
         """Reset tweet status to draft"""
@@ -216,6 +323,18 @@ class SocialInstagram(models.Model):
         ('published', 'Published'),
         ('failed', 'Scheduling Failed')
     ], string="Scheduling Status", default='draft')
+
+    def action_view_content(self):
+        """Open the form view for this Instagram post."""
+        self.ensure_one()
+        return {
+            'type': 'ir.actions.act_window',
+            'name': _('View Instagram Post'),
+            'res_model': 'social.instagram',
+            'view_mode': 'form',
+            'res_id': self.id,
+            'target': 'current',
+        }
 
 
     def action_confirm(self):
@@ -373,6 +492,18 @@ class SocialFacebook(models.Model):
         self.write({'fb_scheduling_status': 'scheduled'})
         self.message_post(body=f"Facebook post scheduled for {self.publish_date}")
 
+    def action_view_content(self):
+        """Open the form view for this Facebook post."""
+        self.ensure_one()
+        return {
+            'type': 'ir.actions.act_window',
+            'name': _('View Facebook Post'),
+            'res_model': 'social.facebook',
+            'view_mode': 'form',
+            'res_id': self.id,
+            'target': 'current',
+        }
+
     @api.model
     def cron_publish_scheduled_posts(self):
         """Cron job to publish posts that are due"""
@@ -388,7 +519,7 @@ class SocialFacebook(models.Model):
         """Create Facebook post with multiple images using feed endpoint"""
         try:
             if self.scheduled_fb_post_id:
-                return  # Already processed
+                return
 
             # Ensure there are images in the post
             if not self.image_ids:
@@ -442,6 +573,7 @@ class SocialFacebook(models.Model):
             # Make the post
             response = requests.post(graph_api_url, data=payload)
             response_data = response.json()
+            print("Facebook post created: ", response_data)
 
             if 'id' in response_data:
                 self.write({
@@ -464,4 +596,4 @@ class SocialFacebook(models.Model):
 
     def action_cancel(self):
         for record in self:
-            record.write({'scheduled_fb_post_id': 'draft'})
+            record.write({'fb_scheduling_status': 'draft'})

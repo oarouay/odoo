@@ -1,5 +1,6 @@
-<?xml version="1.0" encoding="UTF-8" ?>
+<?xml version="1.0" encoding="UTF-8"?>
 <odoo>
+    <!-- Image Model Views -->
     <record id="view_image_model_form" model="ir.ui.view">
         <field name="name">image.model.form</field>
         <field name="model">image.model</field>
@@ -9,12 +10,12 @@
                     <field name="name" placeholder="Enter the image name"/>
                     <field name="description" placeholder="Enter the description"/>
                     <field name="url" placeholder="Enter the image URL"/>
+                    <field name="urldes" readonly="1"/>
                 </group>
             </form>
         </field>
     </record>
 
-    <!-- Tree View -->
     <record id="view_image_model_tree" model="ir.ui.view">
         <field name="name">image.model.tree</field>
         <field name="model">image.model</field>
@@ -25,10 +26,44 @@
             </tree>
         </field>
     </record>
+
     <record id="action_image_model" model="ir.actions.act_window">
-            <field name="name">Images</field>
-            <field name="res_model">image.model</field>
-            <field name="view_mode">tree,form</field>
-            <field name="view_id" ref="view_image_model_tree"/>
-        </record>
+        <field name="name">Images</field>
+        <field name="res_model">image.model</field>
+        <field name="view_mode">tree,form</field>
+        <field name="view_id" ref="view_image_model_tree"/>
+    </record>
+
+    <!-- Link Model Views -->
+    <record id="view_link_model_form" model="ir.ui.view">
+        <field name="name">link.model.form</field>
+        <field name="model">link.model</field>
+        <field name="arch" type="xml">
+            <form string="Link Details">
+                <group>
+                    <field name="name" placeholder="Enter the link name"/>
+                    <field name="description" placeholder="Enter the description"/>
+                    <field name="url" placeholder="Enter the link URL"/>
+                </group>
+            </form>
+        </field>
+    </record>
+
+    <record id="view_link_model_tree" model="ir.ui.view">
+        <field name="name">link.model.tree</field>
+        <field name="model">link.model</field>
+        <field name="arch" type="xml">
+            <tree string="Link List">
+                <field name="name"/>
+                <field name="description"/>
+            </tree>
+        </field>
+    </record>
+
+    <record id="action_link_model" model="ir.actions.act_window">
+        <field name="name">Links</field>
+        <field name="res_model">link.model</field>
+        <field name="view_mode">tree,form</field>
+        <field name="view_id" ref="view_link_model_tree"/>
+    </record>
 </odoo>

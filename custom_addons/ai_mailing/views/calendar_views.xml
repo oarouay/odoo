@@ -48,10 +48,13 @@
         <field name="model_id" ref="model_holiday_event"/>
         <field name="state">code</field>
         <field name="code">model.fetch_calendarific_events()</field>
-        <field name="interval_number">1</field>
-        <field name="interval_type">days</field>
+        <field name="interval_type">months</field>
+        <field name="interval_number">12</field>
         <field name="numbercall">-1</field>
         <field name="doall">True</field>
+        <field name="nextcall"
+                  eval="datetime(datetime.now().year + 1, 1, 1, 1).strftime('%Y-%m-%d %H:%M:%S')"/>
         <field name="active">True</field>
     </record>
+
 </odoo>

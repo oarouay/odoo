@@ -2,7 +2,6 @@ import google.generativeai as genai
 from odoo.exceptions import UserError
 from odoo import models, fields, api, _
 from datetime import datetime, date
-import os
 import json
 from math import floor
 
@@ -13,7 +12,6 @@ class MarketingCampaign(models.Model):
     _inherit = ["mail.thread"]
 
     company_id = fields.Many2one('res.company', string='Company', index=True, default=lambda self: self.env.company)
-
     # Campaign Basic Information
     name = fields.Char(string="Campaign Name", required=True)
     start_date = fields.Date(string="Start Date")
@@ -613,7 +611,8 @@ class MarketingCampaign(models.Model):
 
     def action_generate_email_content(self):
         """Generate AI-powered email content and save it as a new record in the social.email model."""
-        GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+        config = self.env['ir.config_parameter'].sudo()
+        GOOGLE_API_KEY = config.get_param('GOOGLE_API_KEY')
         genai.configure(api_key=GOOGLE_API_KEY)
 
         context = self.context
@@ -714,7 +713,9 @@ class MarketingCampaign(models.Model):
 
     def action_generate_facebook_content(self):
         """Generate AI-powered Facebook content and save it as a new record."""
-        GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+        config = self.env['ir.config_parameter'].sudo()
+        GOOGLE_API_KEY = config.get_param('GOOGLE_API_KEY')
+
         genai.configure(api_key=GOOGLE_API_KEY)
 
         context = self.context
@@ -831,7 +832,9 @@ class MarketingCampaign(models.Model):
 
     def action_generate_instagram_content(self):
         """Generate AI-powered Instagram content and save it as a new record."""
-        GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+        config = self.env['ir.config_parameter'].sudo()
+
+        GOOGLE_API_KEY = config.get_param('GOOGLE_API_KEY')
         genai.configure(api_key=GOOGLE_API_KEY)
 
         context = self.context
@@ -942,7 +945,8 @@ class MarketingCampaign(models.Model):
 
     def action_generate_x_content(self):
         """Generate AI-powered Twitter (X) content and save it as a new record."""
-        GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")
+        config = self.env['ir.config_parameter'].sudo()
+        GOOGLE_API_KEY = config.get_param('GOOGLE_API_KEY')
         genai.configure(api_key=GOOGLE_API_KEY)
 
         context = self.context

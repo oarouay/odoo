@@ -646,7 +646,8 @@ class MarketingCampaignClicksOverTime(models.Model):
 
 
         # 3. Get API Key from Odoo parameters
-        google_api_key = os.getenv("GOOGLE_API_KEY") # Use a specific key name
+        config = self.env['ir.config_parameter'].sudo()
+        google_api_key = config.get_param('GOOGLE_API_KEY') # Use a specific key name
 
         if not google_api_key:
             return ("<h2>Configuration Error</h2>"

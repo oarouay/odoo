@@ -166,11 +166,12 @@ class SocialX(models.Model):
 
     def _post_tweet(self, text, media_ids=None, reply_to_tweet_id=None):
         """Helper method to post a single tweet"""
+        config = self.env['ir.config_parameter'].sudo()
         auth = OAuth1(
-            os.getenv("CUSTOMER_KEY"),
-            os.getenv("CUSTOMER_KEY_SECRET"),
-            os.getenv("X_ACCESS_TOKEN"),
-            os.getenv("X_ACCESS_TOKEN_SECRET")
+            config.get_param('CUSTOMER_KEY'),
+            config.get_param('CUSTOMER_KEY_SECRET'),
+            config.get_param('X_ACCESS_TOKEN'),
+            config.get_param('X_ACCESS_TOKEN_SECRET')
         )
 
         payload = {"text": text}
@@ -191,11 +192,12 @@ class SocialX(models.Model):
 
     def _upload_media(self, image_url):
         """Upload media to Twitter and return media_id"""
+        config = self.env['ir.config_parameter'].sudo()
         auth = OAuth1(
-            os.getenv("CUSTOMER_KEY"),
-            os.getenv("CUSTOMER_KEY_SECRET"),
-            os.getenv("X_ACCESS_TOKEN"),
-            os.getenv("X_ACCESS_TOKEN_SECRET")
+            config.get_param('CUSTOMER_KEY'),
+            config.get_param('CUSTOMER_KEY_SECRET'),
+            config.get_param('X_ACCESS_TOKEN'),
+            config.get_param('X_ACCESS_TOKEN_SECRET')
         )
 
         try:
@@ -356,6 +358,7 @@ class SocialInstagram(models.Model):
     def schedule_instagram_post(self):
         """Create an Instagram post and publish with either a single image or multiple images (carousel post)."""
         print("Instagram post scheduling started")
+        config = self.env['ir.config_parameter'].sudo()
         try:
             if self.scheduled_ig_post_id:
                 return  # Already processed
@@ -364,8 +367,8 @@ class SocialInstagram(models.Model):
             if not self.image_ids:
                 raise Exception("No images provided for the Instagram post.")
 
-            access_token = os.getenv("IG_ACCESS_TOKEN")
-            insta_id = os.getenv("INSTA_ID")
+            access_token = config.get_param('IG_ACCESS_TOKEN')
+            insta_id = config.get_param('INSTA_ID')
 
             if len(self.image_ids) == 1:
                 # Single image post
@@ -517,6 +520,7 @@ class SocialFacebook(models.Model):
 
     def schedule_facebook_post(self):
         """Create Facebook post with multiple images using feed endpoint"""
+        config = self.env['ir.config_parameter'].sudo()
         try:
             if self.scheduled_fb_post_id:
                 return
@@ -529,25 +533,25 @@ class SocialFacebook(models.Model):
             full_message = f"{self.name}\n\n{self.content}"
 
             # For Facebook feed posts with multiple images
-            graph_api_url = f"https://graph.facebook.com/v17.0/{os.getenv('PAGE_ID')}/feed"
+            graph_api_url = f"https://graph.facebook.com/v17.0/{config.get_param('PAGE_ID')}/feed"
 
             if len(self.image_ids) == 1:
                 # Single image post
                 payload = {
                     'message': full_message,
                     'link': self.image_ids[0].url,  # Link to the image
-                    'access_token': os.getenv("ACCESS_TOKEN")
+                    'access_token': config.get_param('ACCESS_TOKEN')
                 }
             else:
                 # Multiple images - use JSON array of attachments
                 attached_media = []
                 for image in self.image_ids:
                     # First, upload each photo without publishing
-                    upload_url = f"https://graph.facebook.com/v17.0/{os.getenv('PAGE_ID')}/photos"
+                    upload_url = f"https://graph.facebook.com/v17.0/{config.get_param('PAGE_ID')}/photos"
                     upload_payload = {
                         'url': image.url,
                         'published': False,  # Don't publish immediately
-                        'access_token': os.getenv("ACCESS_TOKEN")
+                        'access_token': config.get_param('ACCESS_TOKEN')
                     }
 
                     upload_response = requests.post(upload_url, data=upload_payload)
@@ -567,7 +571,7 @@ class SocialFacebook(models.Model):
                 payload = {
                     'message': full_message,
                     'attached_media': json.dumps(attached_media),
-                    'access_token': os.getenv("ACCESS_TOKEN")
+                    'access_token': config.get_param('ACCESS_TOKEN')
                 }
 
             # Make the post

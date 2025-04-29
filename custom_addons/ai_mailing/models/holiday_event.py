@@ -1,12 +1,12 @@
 from odoo import models, fields, api
 import requests
-import os
+from datetime import date,datetime
 
 
 class HolidayEvent(models.Model):
     _name = 'holiday.event'
     _description = 'Holiday or Event'
-
+    next_year = f"{date.today().year + 1}-01-01 00:00:00"
     name = fields.Char('Name', required=True)
     date = fields.Date('Date', required=True)
     country = fields.Char('Country')
@@ -15,6 +15,7 @@ class HolidayEvent(models.Model):
         ('holiday', 'Holiday'),
         ('event', 'Event')
     ], string='Type', default='holiday')
+
 
     def action_create_campaign(self):
         self.ensure_one()
@@ -32,15 +33,12 @@ class HolidayEvent(models.Model):
         }
 
     @api.model
-    def fetch_calendarific_events(self, country=None, year=None, api_key=None):
+    def fetch_calendarific_events(self):
+        config = self.env['ir.config_parameter'].sudo()
+        country = 'TN' #this need to be dynamic via ir.config
+        api_key = config.get_param('CALENDARIFIC_API_KEY')
+        year = fields.Date.today().year
         print(f"calendarific events called for country {country} and year {year} with api key {api_key}")
-        if not country:
-            country = 'TN'
-        if not api_key:
-            api_key = os.getenv("CALENDARIFIC_API_KEY")
-        if not year:
-            year = fields.Date.today().year
-
         url = f"https://calendarific.com/api/v2/holidays?&api_key={api_key}&country={country}&year={year}"
         response = requests.get(url)
         print(response)

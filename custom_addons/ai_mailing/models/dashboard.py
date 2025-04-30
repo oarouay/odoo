@@ -1,12 +1,16 @@
 import google.generativeai as genai
 from odoo.exceptions import UserError
-from odoo import models, fields, api, _
+from odoo import models, api, fields, _
 from datetime import datetime, timedelta
 import json
-import os
 
 class MarketingCampaignClicksOverTime(models.Model):
     _inherit = "marketing.campaign"
+
+    ai_dashboard_report = fields.Html(string="AI Dashboard Report", readonly=True,
+                                      help="AI-generated analysis of campaign performance")
+    ai_report_generation_date = fields.Datetime(string="Report Generation Date", readonly=True)
+
 
     def calculate_campaign_metrics(self, campaigns):
         """
@@ -650,9 +654,12 @@ class MarketingCampaignClicksOverTime(models.Model):
         google_api_key = config.get_param('GOOGLE_API_KEY') # Use a specific key name
 
         if not google_api_key:
-            return ("<h2>Configuration Error</h2>"
-                    "<p>The Google Gemini API Key is not configured in Odoo's System Parameters. "
-                    "Please ask your administrator to add a parameter with the key '<code>google.gemini.api.key</code>'.</p>")
+            html_report = ("<h2>Configuration Error</h2>"
+                           "<p>The Google Gemini API Key is not configured in Odoo's System Parameters. "
+                           "Please ask your administrator to add a parameter with the key '<code>google.gemini.api.key</code>'.</p>")
+
+            self._store_ai_report(campaigns, html_report)
+            return html_report
 
         # 4. Configure Gemini and generate content
         try:
@@ -686,4 +693,19 @@ class MarketingCampaignClicksOverTime(models.Model):
                 "<p>Please check the Odoo server logs for more details and ensure the API key is valid.</p>"
             )
 
+        self._store_ai_report(campaigns, html_report)
+
         return html_report
+
+    def _store_ai_report(self, campaigns, html_report):
+        """
+        Store the AI-generated report in the campaign record(s)
+
+        :param campaigns: recordset of marketing.campaign records
+        :param html_report: HTML string with the report content
+        """
+        now = fields.Datetime.now()
+        campaigns.write({
+            'ai_dashboard_report': html_report,
+            'ai_report_generation_date': now
+        })

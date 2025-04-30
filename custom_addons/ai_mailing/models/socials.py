@@ -113,56 +113,87 @@ class SocialEmail(models.Model):
         # Update the status to 'draft'
         self.write({'mail_scheduling_status': 'draft'})
         self.message_post(body="Email scheduling cancelled")
-
-class SocialX(models.Model):
-    _name = "social.x"
-    _description = "X (Twitter) Posts"
+class SocialMedia(models.Model):
+    """Base model for all social media posts"""
+    _name = "social.media"
+    _description = "Social Media Posts Base"
     _inherit = ['mail.thread']
 
     name = fields.Char(string="Title")
     campaign_id = fields.Many2one('marketing.campaign', string='Campaign')
     is_published = fields.Boolean(string="Is Published", default=False)
-    caption = fields.Text(string="Caption")
     publish_date = fields.Datetime(string="Publish Date")
     image_ids = fields.Many2many('image.model', string='Images')
 
-    # ID for the tweet
-    scheduled_tweet_id = fields.Char(string="Tweet ID", help="ID of the scheduled tweet on X")
-    x_scheduling_status = fields.Selection([
+    # Common status field with consistent naming
+    scheduling_status = fields.Selection([
         ('draft', 'Draft'),
-        ('scheduled', 'Scheduled on X'),
+        ('scheduled', 'Scheduled'),
         ('published', 'Published'),
         ('failed', 'Scheduling Failed')
     ], string="Scheduling Status", default='draft')
 
     def action_view_content(self):
-        """Open the form view for this X (Twitter) post."""
+        """Open the form view for this social media post."""
         self.ensure_one()
         return {
             'type': 'ir.actions.act_window',
-            'name': _('View X Post'),
-            'res_model': 'social.x',
+            'name': _('View Post'),
+            'res_model': self._name,
             'view_mode': 'form',
             'res_id': self.id,
             'target': 'current',
         }
 
     def action_confirm(self):
+        """Mark post as scheduled to be processed by cron"""
+        self.write({'scheduling_status': 'scheduled'})
+        platform_name = self._description.split()[0]  # Extract platform name from description
+        self.message_post(body=f"{platform_name} post scheduled for {self.publish_date}")
+
+    def action_cancel(self):
+        """Reset post status to draft"""
+        for record in self:
+            record.write({'scheduling_status': 'draft'})
+
+    def schedule_post(self):
+        """Abstract method to be implemented by subclasses"""
+        raise NotImplementedError("Subclasses must implement schedule_post method")
+
+    @api.model
+    def cron_publish_scheduled_posts(self):
+        """Generic cron job to publish scheduled posts"""
+        now = datetime.utcnow()
+        posts = self.search([
+            ('scheduling_status', '=', 'scheduled'),
+            ('publish_date', '<=', now)
+        ])
+        for post in posts:
+            post.schedule_post()
+
+class SocialX(models.Model):
+    _name = "social.x"
+    _description = "X (Twitter) Posts"
+    _inherit = ['social.media']
+
+    caption = fields.Text(string="Caption")
+    scheduled_tweet_id = fields.Char(string="Tweet ID", help="ID of the scheduled tweet on X")
+
+    def action_confirm(self):
         """Mark tweet as scheduled to be processed by cron"""
-        self.write({'x_scheduling_status': 'scheduled'})
+        self.write({'scheduling_status': 'scheduled'})
         self.message_post(body=f"Tweet scheduled for {self.publish_date}")
 
     @api.model
     def cron_send_scheduled_x_posts(self):
         """Cron job to publish scheduled tweets"""
         now = datetime.utcnow()
-        print(now)
         posts = self.search([
-            ('x_scheduling_status', '=', 'scheduled'),
-            ('publish_date', '<=', now)  # Fetch posts that are due for publishing
+            ('scheduling_status', '=', 'scheduled'),
+            ('publish_date', '<=', now)
         ])
         for post in posts:
-            post.schedule_tweet()  # Publish each post
+            post.schedule_post()
 
     def _post_tweet(self, text, media_ids=None, reply_to_tweet_id=None):
         """Helper method to post a single tweet"""
@@ -213,7 +244,7 @@ class SocialX(models.Model):
             print(f"Failed to upload media: {str(e)}")
             raise UserError(_("Failed to upload image: %s") % str(e))
 
-    def schedule_tweet(self):
+    def schedule_post(self):
         """Create and publish a tweet thread if content exceeds 280 chars"""
         try:
             if self.scheduled_tweet_id:
@@ -275,7 +306,7 @@ class SocialX(models.Model):
                         if i == 0:  # First tweet in thread
                             self.write({
                                 'scheduled_tweet_id': tweet_id,
-                                'x_scheduling_status': 'published',
+                                'scheduling_status': 'published',
                                 'is_published': True
                             })
                             self.message_post(body=_("First tweet in thread published (ID: %s)") % tweet_id)
@@ -289,73 +320,23 @@ class SocialX(models.Model):
                 raise UserError(_("No tweets were published in the thread"))
 
         except Exception as e:
-            self.write({'x_scheduling_status': 'failed'})
+            self.write({'scheduling_status': 'failed'})
             self.message_post(body=_("Failed to publish tweet thread: %s") % str(e))
             print("Tweet thread failed: %s", str(e), exc_info=True)
             raise
 
-        except Exception as e:
-            error_msg = f"Failed to publish tweet: {str(e)}"
-            self.write({'x_scheduling_status': 'failed'})
-            self.message_post(body=error_msg)
-            print(error_msg)  # Log the error for debugging
-            raise  # Re-raise the exception for further handling if needed
-
-    def action_cancel(self):
-        """Reset tweet status to draft"""
-        for record in self:
-            record.write({'x_scheduling_status': 'draft'})
-
 class SocialInstagram(models.Model):
     _name = "social.instagram"
     _description = "Instagram Posts"
-    _inherit = ['mail.thread']
+    _inherit = ['social.media']
 
-    name = fields.Char(string="Title")
-    campaign_id = fields.Many2one('marketing.campaign', string='Campaign')
-    is_published = fields.Boolean(string="Is Published", default=False)
     caption = fields.Text(string="Caption")
-    publish_date = fields.Datetime(string="Publish Date")
-    image_ids = fields.Many2many('image.model', string='Images',required=True)
-    #id for the post
     scheduled_ig_post_id = fields.Char(string="Instagram Post ID", help="ID of the scheduled post on Instagram")
-    ig_scheduling_status = fields.Selection([
-        ('draft', 'Draft'),
-        ('scheduled', 'Scheduled on Instagram'),
-        ('published', 'Published'),
-        ('failed', 'Scheduling Failed')
-    ], string="Scheduling Status", default='draft')
 
-    def action_view_content(self):
-        """Open the form view for this Instagram post."""
-        self.ensure_one()
-        return {
-            'type': 'ir.actions.act_window',
-            'name': _('View Instagram Post'),
-            'res_model': 'social.instagram',
-            'view_mode': 'form',
-            'res_id': self.id,
-            'target': 'current',
-        }
+    # Override to make images required for Instagram
+    image_ids = fields.Many2many('image.model', string='Images', required=True)
 
-
-    def action_confirm(self):
-        """Mark post as scheduled to be processed by cron"""
-        self.write({'ig_scheduling_status': 'scheduled'})
-        self.message_post(body=f"Instagram post scheduled for {self.publish_date}")
-
-    @api.model
-    def cron_publish_scheduled_posts(self):
-
-        now = datetime.utcnow()
-        posts = self.search([
-            ('ig_scheduling_status', '=', 'scheduled'),
-            ('publish_date', '<=', now) # Find posts where the publish date is in the past or now t3ada wala laa
-        ])
-        for post in posts:
-            post.schedule_instagram_post() #after filtering all the posts that needs to be posted nhabtohom taw
-
-    def schedule_instagram_post(self):
+    def schedule_post(self):
         """Create an Instagram post and publish with either a single image or multiple images (carousel post)."""
         print("Instagram post scheduling started")
         config = self.env['ir.config_parameter'].sudo()
@@ -400,7 +381,11 @@ class SocialInstagram(models.Model):
                 print("Single image published: ", publish_data)
 
                 if "id" in publish_data:
-                    self.write({'scheduled_ig_post_id': publish_data['id'], 'ig_scheduling_status': 'published'})
+                    self.write({
+                        'scheduled_ig_post_id': publish_data['id'],
+                        'scheduling_status': 'published',
+                        'is_published': True
+                    })
                     self.message_post(body="Instagram single image post successfully published!")
                 else:
                     raise Exception(publish_data.get('error', {}).get('message', 'Unknown error'))
@@ -457,68 +442,31 @@ class SocialInstagram(models.Model):
                 print("Carousel published: ", publish_data)
 
                 if "id" in publish_data:
-                    self.write({'scheduled_ig_post_id': publish_data['id'], 'ig_scheduling_status': 'published'})
+                    self.write({
+                        'scheduled_ig_post_id': publish_data['id'],
+                        'scheduling_status': 'published',
+                        'is_published': True
+                    })
                     self.message_post(body="Instagram carousel post successfully published!")
                 else:
                     raise Exception(publish_data.get('error', {}).get('message', 'Unknown error'))
 
         except Exception as e:
-            self.write({'ig_scheduling_status': 'failed'})
+            self.write({'scheduling_status': 'failed'})
             self.message_post(body=f"Failed to publish Instagram post: {str(e)}")
-
-    def action_cancel(self):
-        for record in self:
-            record.write({'ig_scheduling_status': 'draft'})
-
 
 class SocialFacebook(models.Model):
     _name = "social.facebook"
     _description = "Facebook Posts"
-    _inherit = ["mail.thread"]
+    _inherit = ["social.media"]
 
-    name = fields.Char(string="Title")
-    campaign_id = fields.Many2one('marketing.campaign', string='Campaign')
     content = fields.Text(string="Content")
-    publish_date = fields.Datetime(string="Publish Date")
-    is_published = fields.Boolean(string="Is Published", default=False)
-    image_ids = fields.Many2many('image.model', string='Images', required=True)
     scheduled_fb_post_id = fields.Char(string="Facebook Post ID", help="ID of the scheduled post on Facebook")
-    fb_scheduling_status = fields.Selection([
-        ('draft', 'Draft'),
-        ('scheduled', 'Scheduled on Facebook'),
-        ('published', 'Published'),
-        ('failed', 'Scheduling Failed')
-    ], string="Scheduling Status", default='draft')
 
-    def action_confirm(self):
-        """Mark post as scheduled to be processed by cron"""
-        self.write({'fb_scheduling_status': 'scheduled'})
-        self.message_post(body=f"Facebook post scheduled for {self.publish_date}")
+    # Override to make images required for Facebook
+    image_ids = fields.Many2many('image.model', string='Images', required=True)
 
-    def action_view_content(self):
-        """Open the form view for this Facebook post."""
-        self.ensure_one()
-        return {
-            'type': 'ir.actions.act_window',
-            'name': _('View Facebook Post'),
-            'res_model': 'social.facebook',
-            'view_mode': 'form',
-            'res_id': self.id,
-            'target': 'current',
-        }
-
-    @api.model
-    def cron_publish_scheduled_posts(self):
-        """Cron job to publish posts that are due"""
-        now = datetime.utcnow()
-        posts = self.search([
-            ('fb_scheduling_status', '=', 'scheduled'),
-            ('publish_date', '<=', now)  # Find posts where the publish date is in the past or now
-        ])
-        for post in posts:
-            post.schedule_facebook_post()
-
-    def schedule_facebook_post(self):
+    def schedule_post(self):
         """Create Facebook post with multiple images using feed endpoint"""
         config = self.env['ir.config_parameter'].sudo()
         try:
@@ -582,7 +530,8 @@ class SocialFacebook(models.Model):
             if 'id' in response_data:
                 self.write({
                     'scheduled_fb_post_id': response_data['id'],
-                    'fb_scheduling_status': 'published'
+                    'scheduling_status': 'published',
+                    'is_published': True
                 })
                 if len(self.image_ids) == 1:
                     self.message_post(body="Facebook post with image successfully published!")
@@ -594,10 +543,6 @@ class SocialFacebook(models.Model):
                 raise Exception(error_message)
 
         except Exception as e:
-            self.write({'fb_scheduling_status': 'failed'})
+            self.write({'scheduling_status': 'failed'})
             self.message_post(body=f"Failed to publish Facebook post: {str(e)}")
             return False
-
-    def action_cancel(self):
-        for record in self:
-            record.write({'fb_scheduling_status': 'draft'})

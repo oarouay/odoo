@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<odoo>
+    <data>
+        <record id="action_report_marketing_campaign" model="ir.actions.report">
+            <field name="name">Marketing Campaign Report</field>
+            <field name="model">marketing.campaign</field>
+            <field name="report_type">qweb-pdf</field>
+            <field name="report_name">ai_mailing.marketing_campaign</field>
+            <field name="report_file">ai_mailing.marketing_campaign </field>
+            <field name="binding_model_id" ref="model_marketing_campaign"/>
+            <field name="binding_type">report</field>
+        </record>
+    </data>
+</odoo>

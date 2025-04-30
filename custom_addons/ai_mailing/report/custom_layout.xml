@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <template id="custom_layout" inherit_id="web.internal_layout" primary="True">
+        <xpath expr="//div[@class='header']" position="replace">
+            <div class="header">
+                <div class="row">
+                    <div class="col-3">
+                        <img t-if="company.logo" t-att-src="image_data_uri(company.logo)" style="max-height: 120px;" alt="Logo"/>
+                    </div>
+                    <div class="col-9 text-right" style="margin-top:20px;">
+                        <h3><t t-esc="company.name"/></h3>
+                        <div t-field="company.partner_id" t-options='{"widget": "contact", "fields": ["address", "phone"], "no_marker": true}'/>
+                    </div>
+                </div>
+            </div>
+        </xpath>
+    </template>
+</odoo>

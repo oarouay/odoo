@@ -3,6 +3,7 @@ from odoo.exceptions import UserError
 from odoo import models, api, fields, _
 from datetime import datetime, timedelta
 import json
+import re
 
 class MarketingCampaignClicksOverTime(models.Model):
     _inherit = "marketing.campaign"
@@ -622,11 +623,20 @@ class MarketingCampaignClicksOverTime(models.Model):
         metrics_json = json.dumps(metrics, indent=2)
         prompt_base = (
             "You are an expert marketing analyst interpreting marketing campaign data for a non-technical user. "
-            "Format your response as a visually appealing HTML report using simple language. Use headings (h3), paragraphs (p), and lists (ul/li) for clarity. "
-            f"primary campaign name : {campaigns.name}"
+            "Format your response as a visually appealing HTML report that will be rendered in a PDF. "
+            f"Primary campaign name: {campaigns.name}. "
             "Focus on the most important metrics like Clicks, Sales, Revenue, Conversion Rate, Cost, and ROI.\n\n"
             "Here are the metrics data (JSON):\n"
             f"{metrics_json}\n\n"
+            "VERY IMPORTANT FORMATTING INSTRUCTIONS: \n"
+            "1. Do NOT use markdown code blocks (```html) in your response, just provide clean HTML\n"
+            "2. Use proper HTML tables with <table>, <tr>, <th>, and <td> tags\n"
+            "3. Add Bootstrap-compatible classes to tables: class='table table-bordered table-striped'\n"
+            "4. Use <strong> instead of <b> and <em> instead of <i>\n"
+            "5. Keep styling minimal and compatible with PDF rendering\n"
+            "6. Do not include DOCTYPE, html, head or body tags\n"
+            "7. Use only basic HTML elements that render well in PDF: h1, h2, h3, p, ul, li, table, tr, td, strong, em\n"
+            "8. Make the content visually readable with appropriate spacing and formatting"
         )
 
         if comparison_campaign_id and any(key.endswith('_change_percent') for key in metrics):
@@ -659,8 +669,6 @@ class MarketingCampaignClicksOverTime(models.Model):
                            "Please ask your administrator to add a parameter with the key '<code>google.gemini.api.key</code>'.</p>")
 
             self._store_ai_report(campaigns, html_report)
-            return html_report
-
         # 4. Configure Gemini and generate content
         try:
             genai.configure(api_key=google_api_key)
@@ -692,10 +700,44 @@ class MarketingCampaignClicksOverTime(models.Model):
                 f"<p>Could not generate the report due to an API error: {e}</p>"
                 "<p>Please check the Odoo server logs for more details and ensure the API key is valid.</p>"
             )
-
+        print(html_report)
         self._store_ai_report(campaigns, html_report)
 
-        return html_report
+    def _sanitize_html_for_pdf(self, html_content):
+        """
+        Sanitize HTML to ensure it's PDF-friendly
+
+        :param html_content: Raw HTML content from Gemini
+        :return: Sanitized HTML content
+        """
+        # Remove markdown code blocks (triple backticks)
+        html_content = re.sub(r'```html\s*', '', html_content)
+        html_content = re.sub(r'```\s*', '', html_content)
+
+        # Remove any script tags and their contents
+        html_content = re.sub(r'<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>', '', html_content)
+
+        # Remove any style tags and their contents
+        html_content = re.sub(r'<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>', '', html_content)
+
+        # Remove DOCTYPE, html, head, body tags if they exist
+        html_content = re.sub(r'<!DOCTYPE[^>]*>', '', html_content)
+        html_content = re.sub(r'<html[^>]*>|<\/html>', '', html_content)
+        html_content = re.sub(r'<head[^>]*>.*?<\/head>', '', html_content)
+        html_content = re.sub(r'<body[^>]*>|<\/body>', '', html_content)
+
+        # Clean up any other markdown artifacts that might interfere with HTML rendering
+        html_content = re.sub(r'\*\*(.*?)\*\*', r'<strong>\1</strong>', html_content)  # Bold text
+        html_content = re.sub(r'\*(.*?)\*', r'<em>\1</em>', html_content)  # Italic text
+
+        # Wrap the content in a div with some basic styling
+        html_content = f"""
+        <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #333;">
+            {html_content}
+        </div>
+        """
+
+        return html_content
 
     def _store_ai_report(self, campaigns, html_report):
         """
@@ -704,8 +746,10 @@ class MarketingCampaignClicksOverTime(models.Model):
         :param campaigns: recordset of marketing.campaign records
         :param html_report: HTML string with the report content
         """
+        clean_html_report=self._sanitize_html_for_pdf(html_report)
         now = fields.Datetime.now()
         campaigns.write({
-            'ai_dashboard_report': html_report,
+            'ai_dashboard_report': clean_html_report,
             'ai_report_generation_date': now
         })
+

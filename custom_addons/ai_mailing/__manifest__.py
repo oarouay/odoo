@@ -13,6 +13,8 @@
     "data" : [
         'security/security.xml',
         "security/ir.model.access.csv",
+        "report/custom_layout.xml",
+        "report/campagn_report_views.xml",
         "views/cost_views.xml",
         "views/calendar_views.xml",
         "views/dashboard_sales.xml",

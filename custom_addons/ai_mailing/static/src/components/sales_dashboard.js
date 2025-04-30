@@ -5,13 +5,13 @@ import { KpiCard } from "./kpi_card/kpi_card";
 import { ChartRenderer} from "./chart_renderer/chart_renderer";
 import { _t } from "@web/core/l10n/translation";
 import { useService} from "@web/core/utils/hooks";
-import {AIReportWizard} from "./wizard/wizard_report";
 
 const { Component, onWillStart, useRef, onMounted, useState } = owl
 
 export class OwlSalesDashboard extends Component {
     setup() {
-        this.state = useState({
+        this.state = useState(
+            {
             showAIReportModal: false,
             selectedCampaignId: null,
             comparisonCampaignId : null,
@@ -59,6 +59,7 @@ export class OwlSalesDashboard extends Component {
         this.orm = useService("orm")
         this.dialog = useService("dialog");
         this.notification = useService("notification");
+        this.action = useService("action");
         this.primaryCampaignSelectRef = useRef("primaryCampaignSelect");
         this.comparisonCampaignSelectRef = useRef("comparisonCampaignSelect");
 
@@ -169,24 +170,55 @@ export class OwlSalesDashboard extends Component {
         this.state.budgetDateRange = parseInt(ev.target.value);
     }
 
-    onGenerateReportClick() {
+    async onGenerateReportClick() {
         if (!this.state.selectedCampaignId) {
-            this.notification.add(_t("Please select a primary campaign first"), { type: "warning" });
+            this.notification.add("Please select a primary campaign first", {
+                type: "warning",
+            });
             return;
         }
-        this.dialog.add(AIReportWizard, {
-            primaryCampaignId: this.state.selectedCampaignId,
-            comparisonCampaignId: this.state.comparisonCampaignId,
-            close: () => this.dialog.remove(),
+
+        // Show loading notification
+        this.notification.add("Generating AI report...", {
+            type: "info",
         });
+
+        try {
+            // Call the backend method to generate the report
+            await this.orm.call(
+                "marketing.campaign",
+                "generate_gemini_dashboard_report",
+                [[["id", "=", this.state.selectedCampaignId]], this.state.comparisonCampaignId || false]
+            );
+
+            // Show success notification
+            this.notification.add("AI Report generated successfully!", {
+                type: "success",
+            });
+            console.log("Report generated successfully.");
+            // Open the report in a new window/tab
+            // const reportUrl = `/report/pdf/ai_mailing.marketing_campaign/${this.state.selectedCampaignId}/`;
+            // window.open(reportUrl, '_blank');
+            console.log("campaign id", this.state.selectedCampaignId)
+            this.action.doAction({
+                type: 'ir.actions.report',
+                report_type: 'qweb-html',
+                report_name: 'ai_mailing.marketing_campaign_report',
+                context: {
+                    active_model: 'marketing.campaign',
+                    active_ids: [this.state.selectedCampaignId], // Replace with the actual ID
+                    action_share: true
+                }
+            });
+        } catch (error) {
+            console.error("Error generating AI report:", error);
+            this.notification.add("Failed to generate AI report. Please try again.", {
+                type: "danger",
+            });
+        }
     }
 
-    closeAIReportModal() {
-        this.state.showAIReportModal = false;
-    }
-
-
-    static components = { KpiCard, ChartRenderer, AIReportWizard };
+    static components = { KpiCard, ChartRenderer };
 }
 
 OwlSalesDashboard.template = "ai_mailing.OwlSalesDashboard"

@@ -18,3 +18,4 @@ access_prompt_tag_employee,prompt.tag.employee,model_prompt_tag,ai_mailing.group
 access_link_model_employee,link.model.employee,model_link_model,ai_mailing.group_marketing_employee,1,1,1,1
 access_marketing_campaign_cost_employee,marketing.campaign.cost.employee,model_marketing_campaign_cost,ai_mailing.group_marketing_employee,1,1,1,1
 access_holiday_event_responsible,holiday.event.responsible,model_holiday_event,ai_mailing.group_marketing_responsible,1,1,1,1
+access_social_media_responsible,social.media.responsible,model_social_media,ai_mailing.group_marketing_responsible,1,1,1,1

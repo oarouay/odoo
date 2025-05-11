@@ -1,19 +1,21 @@
 {
-    "name" : "Generate Email with AI",
+    "name" : "AI Marketing",
     "author" : "Arouay",
     "license" : "LGPL-3",
     "depends" : [
         'mail',
         'sale',
         'product',
-        'mass_mailing',
+        'link_tracker',
         'website_sale',
         "utm",
                  ],
     "data" : [
         'security/security.xml',
         "security/ir.model.access.csv",
+        "views/custom_login_template.xml",
         "report/custom_layout.xml",
+        "report/campaign_cost_report_template.xml",
         "report/campagn_report_views.xml",
         "views/cost_views.xml",
         "views/calendar_views.xml",
@@ -33,6 +35,6 @@
             'ai_mailing/static/src/components/**/*.scss',
         ],
     },
-    "application": True,
-    "installable": True
+    'installable': True,
+    'application': True,
 }

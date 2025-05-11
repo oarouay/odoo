@@ -1,0 +1,13 @@
+<!-- my_module/views/custom_login_template.xml -->
+<odoo>
+    <!-- Inherit the base login template instead of login_layout -->
+    <template id="custom_login" inherit_id="web.login">
+        <!-- Add the company logo above the login form -->
+        <xpath expr="//form" position="before">
+            <div class="text-center mb-4">
+                <img src="/ai_mailing/static/src/img/logo.png" class="img-fluid" style="max-width: 200px;" alt="Company Logo" />
+                <h3 class="mt-2">Welcome</h3>
+            </div>
+        </xpath>
+    </template>
+</odoo>

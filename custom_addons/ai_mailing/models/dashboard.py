@@ -21,7 +21,9 @@ class MarketingCampaignClicksOverTime(models.Model):
         :return: dict containing all calculated metrics
         """
         # Get all clicks related to the campaigns
-        clicks = self.env['link.tracker.click'].search([('campaign_id', 'in', campaigns.ids)])
+        clicks = self.env['link.tracker.click'].search([
+            ('link_id.campaign_id1', 'in', campaigns.ids)
+        ])
 
         # Get all sales sourced from these clicks
         click_sourced_sales = clicks.mapped('sale_id')
@@ -145,7 +147,7 @@ class MarketingCampaignClicksOverTime(models.Model):
         campaigns = self.search(domain)
 
         # Get all tracked links for these campaigns
-        link_ids = self.env['link.tracker'].search([('campaign_id', 'in', campaigns.ids)])
+        link_ids = self.env['link.tracker'].search([('campaign_id1', 'in', campaigns.ids)])
         clicks = self.env['link.tracker.click'].search([('link_id', 'in', link_ids.ids)])
 
         # Get sales from these clicks
@@ -243,7 +245,7 @@ class MarketingCampaignClicksOverTime(models.Model):
             interval_sql = 'day'
 
         # Get all tracked links for these campaigns
-        link_ids = self.env['link.tracker'].search([('campaign_id', 'in', campaigns.ids)])
+        link_ids = self.env['link.tracker'].search([('campaign_id1', 'in', campaigns.ids)])
 
         if not link_ids:
             return {
@@ -373,7 +375,7 @@ class MarketingCampaignClicksOverTime(models.Model):
         start_date = end_date - timedelta(days=int(date_range))
 
         # Get all tracked links for these campaigns
-        link_ids = self.env['link.tracker'].search([('campaign_id', 'in', campaigns.ids)])
+        link_ids = self.env['link.tracker'].search([('campaign_id1', 'in', campaigns.ids)])
 
         if not link_ids:
             return {
@@ -514,7 +516,7 @@ class MarketingCampaignClicksOverTime(models.Model):
             return self.get_default_chart_data()
 
         # Get all tracked links for these campaigns
-        link_ids = self.env['link.tracker'].search([('campaign_id', 'in', campaigns.ids)])
+        link_ids = self.env['link.tracker'].search([('campaign_id1', 'in', campaigns.ids)])
 
         if not link_ids:
             return self.get_default_chart_data()
@@ -528,7 +530,7 @@ class MarketingCampaignClicksOverTime(models.Model):
             FROM 
                 marketing_campaign mc
             LEFT JOIN 
-                link_tracker lt ON lt.campaign_id = mc.id
+                link_tracker lt ON lt.campaign_id1 = mc.id
             LEFT JOIN 
                 link_tracker_click ltc ON ltc.link_id = lt.id
             LEFT JOIN 

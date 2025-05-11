@@ -1,11 +1,11 @@
 from . import mailing
 from . import prompt_tag
 from . import socials
-from . import mailing_mailing
 from . import media
 from . import link_tracker
 from . import sale_order_in
 from . import dashboard
 from . import campaign_cost
 from . import holiday_event
-
+from . import campaign_cost_report
+from . import test

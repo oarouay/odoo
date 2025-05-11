@@ -32,7 +32,7 @@
     <record id="rule_social_posts_employee" model="ir.rule">
         <field name="name">Marketing Employee: Create but not confirm social posts</field>
         <field name="model_id" ref="ai_mailing.model_social_facebook"/>
-        <field name="domain_force">[('scheduling_status', 'in', ['draft'])]</field>
+        <field name="domain_force">[(1, '=', 1)]</field>
         <field name="groups" eval="[(4, ref('group_marketing_employee'))]"/>
         <field name="perm_read" eval="True"/>
         <field name="perm_write" eval="True"/>
@@ -43,7 +43,7 @@
     <record id="rule_social_instagram_employee" model="ir.rule">
         <field name="name">Marketing Employee: Create but not confirm Instagram posts</field>
         <field name="model_id" ref="ai_mailing.model_social_instagram"/>
-        <field name="domain_force">[('scheduling_status', 'in', ['draft'])]</field>
+        <field name="domain_force">[(1, '=', 1)]</field>
         <field name="groups" eval="[(4, ref('group_marketing_employee'))]"/>
         <field name="perm_read" eval="True"/>
         <field name="perm_write" eval="True"/>
@@ -54,7 +54,7 @@
     <record id="rule_social_x_employee" model="ir.rule">
         <field name="name">Marketing Employee: Create but not confirm X posts</field>
         <field name="model_id" ref="ai_mailing.model_social_x"/>
-        <field name="domain_force">[('scheduling_status', 'in', ['draft'])]</field>
+        <field name="domain_force">[(1, '=', 1)]</field>
         <field name="groups" eval="[(4, ref('group_marketing_employee'))]"/>
         <field name="perm_read" eval="True"/>
         <field name="perm_write" eval="True"/>
@@ -62,11 +62,23 @@
         <field name="perm_unlink" eval="True"/>
     </record>
 
+    <!-- Modify the existing rule to allow sending emails -->
     <record id="rule_social_email_employee" model="ir.rule">
-        <field name="name">Marketing Employee: Create but not confirm emails</field>
+        <field name="name">Marketing Employee: Create and send emails</field>
         <field name="model_id" ref="ai_mailing.model_social_email"/>
-        <field name="domain_force">[('mail_scheduling_status', 'in', ['draft'])]</field>
+        <field name="domain_force">[(1, '=', 1)]</field>
         <field name="groups" eval="[(4, ref('group_marketing_employee'))]"/>
+        <field name="perm_read" eval="True"/>
+        <field name="perm_write" eval="True"/>
+        <field name="perm_create" eval="True"/>
+        <field name="perm_unlink" eval="True"/>
+    </record>
+
+    <!-- Add access rights to mail.mail model for marketing employees -->
+    <record id="access_mail_mail_marketing_employee" model="ir.model.access">
+        <field name="name">mail.mail.marketing.employee</field>
+        <field name="model_id" ref="mail.model_mail_mail"/>
+        <field name="group_id" ref="group_marketing_employee"/>
         <field name="perm_read" eval="True"/>
         <field name="perm_write" eval="True"/>
         <field name="perm_create" eval="True"/>

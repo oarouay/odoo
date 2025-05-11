@@ -62,7 +62,7 @@ class LinkTracker(models.Model):
         response.set_cookie('odoo_click_id', str(click.id), max_age=30 * 24 * 3600)  # 30 days
         return response
 
-
+import requests
 
 class LinkTrackerClick(models.Model):
     _inherit = "link.tracker.click"
@@ -140,13 +140,36 @@ class LinkTrackerClick(models.Model):
 
         return super().create(vals_list)
 
+    import requests
+
     def _get_geoip_data(self, ip):
-        """Get geographic data from IP address"""
-        # In production, integrate with a geoIP service
-        return {
-            'country_code': 'US',
-            'city': 'New York'
-        }
+        # """Get geographic data from IP address"""
+        # # Using the free ipapi.co service (no API key required for limited usage)
+        # try:
+        #     response = requests.get(f"https://ipapi.co/{ip}/json/")
+        #
+        #     if response.status_code == 200:
+        #         data = response.json()
+        #         return {
+        #             'country_code': data.get('country_code'),
+        #             'city': data.get('city')
+        #         }
+        #     else:
+        #         # Log the error and return default values
+        #         print(f"Error retrieving geoIP data: Status code {response.status_code}")
+        #         return {
+        #             'country_code': 'Unknown',
+        #             'city': 'Unknown'
+        #         }
+        # except Exception as e:
+        #     # Handle any exceptions that might occur
+        #     print(f"Exception while retrieving geoIP data: {str(e)}")
+        #     return {
+        #         'country_code': 'Unknown',
+        #         'city': 'Unknown'
+        #     }
+        return { 'country_code': 'TN',
+                 'city': 'Djerba' }
 
     def _detect_device_type(self, user_agent):
         """Detect device type from user agent string"""

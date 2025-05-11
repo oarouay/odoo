@@ -32,24 +32,6 @@ class MailMail(models.Model):
         # super() already cleans pseudo-void content from editor
         body = super()._prepare_outgoing_body()
 
-        if body and self.mailing_id and self.mailing_trace_ids:
-            for match in set(re.findall(tools.URL_REGEX, body)):
-                href = match[0]
-                url = match[1]
-
-                parsed = werkzeug.urls.url_parse(url, scheme='http')
-
-                if parsed.scheme.startswith('http') and parsed.path.startswith('/r/'):
-                    new_href = href.replace(url, url + '/m/' + str(self.mailing_trace_ids[0].id))
-                    body = body.replace(href, new_href)
-
-            # generate tracking URL
-            tracking_url = self._get_tracking_url()
-            body = tools.append_content_to_html(
-                body,
-                f'<img src="{tracking_url}"/>',
-                plaintext=False,
-            )
         return body
 
     def _prepare_outgoing_list(self, recipients_follower_status=None):

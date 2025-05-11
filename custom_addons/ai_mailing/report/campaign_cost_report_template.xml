@@ -1,0 +1,87 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<odoo>
+    <record id="action_campaign_cost_report" model="ir.actions.report">
+        <field name="name">Campaign Cost Report</field>
+        <field name="model">marketing.campaign</field>
+        <field name="report_type">qweb-pdf</field>
+        <field name="report_name">ai_mailing.campaign_cost_report</field>
+        <field name="print_report_name">'Campaign Costs - %s' % (object.name)</field>
+        <field name="binding_model_id" ref="model_marketing_campaign"/>
+        <field name="binding_type">report</field>
+    </record>
+
+    <template id="campaign_cost_report">
+    <t t-call="web.html_container">
+        <t t-foreach="docs" t-as="doc">
+            <t t-call="web.external_layout">
+                <div class="page">
+                    <h2>Cost Report for: <span t-field="doc.name"/></h2>
+
+                    <!-- Summary Section -->
+                    <div class="row mb-4">
+                        <div class="col-6">
+                            <strong>Campaign:</strong> <span t-field="doc.name"/><br/>
+                            <strong>Start Date:</strong> <span t-field="doc.start_date"/><br/>
+                            <strong>End Date:</strong> <span t-field="doc.end_date"/><br/>
+                            <strong>Status:</strong> <span t-field="doc.status"/>
+                        </div>
+                        <div class="col-6">
+                            <div class="alert alert-info">
+                                <strong>Total Costs:</strong>
+                                <span t-esc="'{:,.2f}'.format(total)" class="h3 ml-2"/>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Cost Details Section -->
+                    <t t-if="has_costs">
+                        <t t-if="cost_by_type">
+                            <t t-foreach="cost_by_type.items()" t-as="type_costs">
+                                <h4><t t-esc="type_costs[0] or 'Uncategorized'"/></h4>
+                                <table class="table table-bordered">
+                                    <thead>
+                                        <tr>
+                                            <th>Date</th>
+                                            <th>Description</th>
+                                            <th>Amount</th>
+                                            <th>Notes</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <t t-foreach="type_costs[1]" t-as="cost">
+                                            <tr>
+                                                <td><span t-esc="cost['date']"/></td>
+                                                <td><span t-esc="cost['name']"/></td>
+                                                <td><span t-esc="'{:,.2f}'.format(cost['amount'])"/></td>
+                                                <td><span t-esc="cost['notes']"/></td>
+                                            </tr>
+                                        </t>
+                                        <tr class="table-info">
+                                            <td colspan="2" class="text-right"><strong>Subtotal</strong></td>
+                                            <td>
+                                                <strong>
+                                                    <t t-set="type_total" t-value="sum(item['amount'] for item in type_costs[1])"/>
+                                                    <span t-esc="'{:,.2f}'.format(type_total)"/>
+                                                </strong>
+                                            </td>
+                                            <td></td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </t>
+                        </t>
+                        <t t-else="">
+                            <p>No categorized costs found.</p>
+                        </t>
+                    </t>
+                    <t t-else="">
+                        <div class="alert alert-warning">
+                            <p>No costs recorded for this campaign.</p>
+                        </div>
+                    </t>
+                </div>
+            </t>
+        </t>
+    </t>
+</template>
+</odoo>

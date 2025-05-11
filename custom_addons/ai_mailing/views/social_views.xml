@@ -8,13 +8,10 @@
             <form string="Email Post">
                 <header>
                         <button name="action_confirm" type="object" string="Confirm" invisible="mail_scheduling_status != 'draft'"
-                            class="oe_highlight"
-                        groups="ai_mailing.group_marketing_responsible"/>
+                            class="oe_highlight"/>
                         <button name="action_confirm" type="object" string="Re try" invisible="mail_scheduling_status != 'failed'"
-                            class="oe_highlight"
-                        groups="ai_mailing.group_marketing_responsible"/>
-                        <button name="action_cancel" type="object" string="Cancel" invisible="mail_scheduling_status == 'draft' or mail_scheduling_status == 'sent' or mail_scheduling_status == 'failed'"
-                        groups="ai_mailing.group_marketing_responsible"/>
+                            class="oe_highlight"/>
+                        <button name="action_cancel" type="object" string="Cancel" invisible="mail_scheduling_status == 'draft' or mail_scheduling_status == 'sent' or mail_scheduling_status == 'failed'"/>
                         <field name="mail_scheduling_status" widget="statusbar" options="{'statusbar_visible': ['draft', 'scheduled', 'sent', 'failed']}"/>
                 </header>
                 <sheet>
@@ -43,10 +40,14 @@
         <field name="name">social.email.tree</field>
         <field name="model">social.email</field>
         <field name="arch" type="xml">
-            <tree string="Emails">
+             <tree string="Emails" decoration-success="mail_scheduling_status == 'sent'" decoration-info="mail_scheduling_status == 'scheduled'" decoration-danger="mail_scheduling_status == 'failed'" decoration-muted="mail_scheduling_status == 'draft'">
                 <field name="name"/>
                 <field name="publish_date"/>
-                <field name="mail_scheduling_status"/>
+                <field name="mail_scheduling_status" widget="badge"
+                       decoration-success="mail_scheduling_status == 'sent'"
+                       decoration-info="mail_scheduling_status == 'scheduled'"
+                       decoration-danger="mail_scheduling_status == 'failed'"
+                       decoration-muted="mail_scheduling_status == 'draft'"/>
             </tree>
         </field>
     </record>
@@ -60,14 +61,11 @@
             <sheet>
                 <header>
                     <button name="action_confirm" type="object" string="Confirm"
-                        invisible="scheduling_status != 'draft'" class="oe_highlight"
-                    groups="ai_mailing.group_marketing_responsible"/>
+                        invisible="scheduling_status != 'draft'" class="oe_highlight"/>
                     <button name="action_confirm" type="object" string="Retry"
-                        invisible="scheduling_status != 'failed'" class="oe_highlight"
-                    groups="ai_mailing.group_marketing_responsible"/>
+                        invisible="scheduling_status != 'failed'" class="oe_highlight"/>
                     <button name="action_cancel" type="object" string="Cancel"
-                        invisible="scheduling_status == 'draft' or scheduling_status == 'published' or scheduling_status == 'failed'"
-                    groups="ai_mailing.group_marketing_responsible"/>
+                        invisible="scheduling_status == 'draft' or scheduling_status == 'published' or scheduling_status == 'failed'"/>
                     <field name="scheduling_status" widget="statusbar" options="{'statusbar_visible': ['draft', 'scheduled', 'published', 'failed']}"/>
                 </header>
                 <group>
@@ -90,11 +88,15 @@
     <field name="name">social.x.tree</field>
     <field name="model">social.x</field>
     <field name="arch" type="xml">
-        <tree string="Tweets">
-            <field name="name"/>
-            <field name="publish_date"/>
-            <field name="scheduling_status"/>
-        </tree>
+        <tree string="Tweets" decoration-success="scheduling_status == 'published'" decoration-info="scheduling_status == 'scheduled'" decoration-danger="scheduling_status == 'failed'" decoration-muted="scheduling_status == 'draft'">
+                <field name="name"/>
+                <field name="publish_date"/>
+                <field name="scheduling_status" widget="badge"
+                       decoration-success="scheduling_status == 'published'"
+                       decoration-info="scheduling_status == 'scheduled'"
+                       decoration-danger="scheduling_status == 'failed'"
+                       decoration-muted="scheduling_status == 'draft'"/>
+            </tree>
     </field>
 </record>
 
@@ -107,13 +109,10 @@
                 <sheet>
                     <header>
                         <button name="action_confirm" type="object" string="Confirm" invisible="scheduling_status != 'draft'"
-                            class="oe_highlight"
-                        groups="ai_mailing.group_marketing_responsible"/>
+                            class="oe_highlight"/>
                         <button name="action_confirm" type="object" string="Re try" invisible="scheduling_status != 'failed'"
-                            class="oe_highlight"
-                        groups="ai_mailing.group_marketing_responsible"/>
-                        <button name="action_cancel" type="object" string="Cancel" invisible="scheduling_status == 'draft' or scheduling_status == 'published' or scheduling_status == 'failed'"
-                        groups="ai_mailing.group_marketing_responsible"/>
+                            class="oe_highlight"/>
+                        <button name="action_cancel" type="object" string="Cancel" invisible="scheduling_status == 'draft' or scheduling_status == 'published' or scheduling_status == 'failed'"/>
                         <field name="scheduling_status" widget="statusbar" options="{'statusbar_visible': ['draft', 'scheduled', 'published', 'failed']}"/>
                     </header>
                     <group>
@@ -131,10 +130,14 @@
         <field name="name">social.instagram.tree</field>
         <field name="model">social.instagram</field>
         <field name="arch" type="xml">
-            <tree string="Instagram Posts">
+            <tree string="Instagram Posts" decoration-success="scheduling_status == 'published'" decoration-info="scheduling_status == 'scheduled'" decoration-danger="scheduling_status == 'failed'" decoration-muted="scheduling_status == 'draft'">
                 <field name="name"/>
                 <field name="publish_date"/>
-                <field name="scheduling_status"/>
+                <field name="scheduling_status" widget="badge"
+                       decoration-success="scheduling_status == 'published'"
+                       decoration-info="scheduling_status == 'scheduled'"
+                       decoration-danger="scheduling_status == 'failed'"
+                       decoration-muted="scheduling_status == 'draft'"/>
             </tree>
         </field>
     </record>
@@ -148,13 +151,10 @@
                 <sheet>
                     <header>
                         <button name="action_confirm" type="object" string="Confirm" invisible="scheduling_status != 'draft'"
-                            class="oe_highlight"
-                        groups="ai_mailing.group_marketing_responsible"/>
+                            class="oe_highlight"/>
                         <button name="action_confirm" type="object" string="Re try" invisible="scheduling_status != 'failed'"
-                            class="oe_highlight"
-                        groups="ai_mailing.group_marketing_responsible"/>
-                        <button name="action_cancel" type="object" string="Cancel" invisible="scheduling_status == 'draft' or scheduling_status == 'published' or scheduling_status == 'failed'"
-                        groups="ai_mailing.group_marketing_responsible"/>
+                            class="oe_highlight"/>
+                        <button name="action_cancel" type="object" string="Cancel" invisible="scheduling_status == 'draft' or scheduling_status == 'published' or scheduling_status == 'failed'"/>
                         <field name="scheduling_status" widget="statusbar" options="{'statusbar_visible': ['draft', 'scheduled', 'published', 'failed']}"/>
                     </header>
                     <group>
@@ -173,10 +173,14 @@
         <field name="name">social.facebook.tree</field>
         <field name="model">social.facebook</field>
         <field name="arch" type="xml">
-            <tree string="Facebook Posts">
+            <tree string="Facebook Posts" decoration-success="scheduling_status == 'published'" decoration-info="scheduling_status == 'scheduled'" decoration-danger="scheduling_status == 'failed'" decoration-muted="scheduling_status == 'draft'">
                 <field name="name"/>
                 <field name="publish_date"/>
-                <field name="scheduling_status"/>
+                <field name="scheduling_status" widget="badge"
+                       decoration-success="scheduling_status == 'published'"
+                       decoration-info="scheduling_status == 'scheduled'"
+                       decoration-danger="scheduling_status == 'failed'"
+                       decoration-muted="scheduling_status == 'draft'"/>
             </tree>
         </field>
     </record>

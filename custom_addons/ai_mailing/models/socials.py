@@ -31,8 +31,6 @@ class SocialEmail(models.Model):
     )
     email_addresses = fields.Char(string="Email Addresses", compute="_compute_email_addresses", readonly=True)
     publish_date = fields.Datetime(string="Publish Date")
-    mailing_ids = fields.One2many('mailing.mailing', 'social_email_id', string='Mass Mailings')
-
 
     def action_view_content(self):
         """Open the form view for this email record."""
@@ -51,38 +49,31 @@ class SocialEmail(models.Model):
             record.email_addresses = ', '.join(record.recipient_ids.mapped('email')) if record.recipient_ids else ''
 
     def action_confirm(self):
-        """Mark message as scheduled and create mass mailing with personalized content."""
+        """Mark message as scheduled and prepare mail.mail messages with tracking disabled."""
         self.ensure_one()
-        # Ensure recipient_ids is a list of IDs
-        recipient_ids = self.recipient_ids.ids
-        if not recipient_ids:
+
+        if not self.recipient_ids:
             raise UserError("No recipients selected for the email.")
 
-        # Create a mailing.mailing record for each recipient
         for recipient in self.recipient_ids:
-            personalized_content = self.content.replace('{name}', recipient.name)
+            personalized_content = self.content.replace('{name}', recipient.name or '')
 
-            vals = {
+            mail_vals = {
                 'subject': self.name,
                 'body_html': personalized_content,
-                'mailing_model_id': self.env['ir.model']._get('res.partner').id,
-                'mailing_domain': [('id', '=', recipient.id)],  # Send to this specific recipient
-                'reply_to_mode': 'new',
-                'schedule_date': self.publish_date,
-                'state': 'draft',
-                'social_email_id': self.id,  # Associate with the current SocialEmail record
+                'email_to': recipient.email,
+                'auto_delete': False,
+                'scheduled_date': self.publish_date,
+                'reply_to': self.env.user.email,
             }
-            self.env['mailing.mailing'].create(vals)
+            self.env['mail.mail'].create(mail_vals)
 
-        # Update the scheduling status
-        self.write({
-            'mail_scheduling_status': 'scheduled'
-        })
+        self.write({'mail_scheduling_status': 'scheduled'})
+        self.message_post(body=f"Emails scheduled for {self.publish_date}")
 
-        self.message_post(body=f"Email scheduled for {self.publish_date}")
     @api.model
     def cron_check_status_emails(self):
-        """Cron job to send scheduled emails using mailing.mailing."""
+        """Cron job to send emails scheduled with mail.mail."""
         now = fields.Datetime.now()
         emails = self.search([
             ('mail_scheduling_status', '=', 'scheduled'),
@@ -90,20 +81,19 @@ class SocialEmail(models.Model):
         ])
         for email in emails:
             try:
-                # Process all mailing.mailing records associated with this SocialEmail
-                for mailing in email.mailing_ids:
-                    # Put mailing in queue for sending
-                    mailing.action_put_in_queue()
-                    # Actually send the emails
-                    mailing.action_send_mail()
+                # Send matching mail.mail records manually
+                mail_records = self.env['mail.mail'].search([
+                    ('scheduled_date', '<=', now),
+                    ('subject', '=', email.name),
+                    ('email_to', 'in', email.recipient_ids.mapped('email'))
+                ])
+                mail_records.send()
 
-                # Update the status to 'sent'
                 email.write({'mail_scheduling_status': 'sent'})
-                email.message_post(body="Email messages queued for sending via mailing.mailing!")
+                email.message_post(body="Emails sent using mail.mail")
             except Exception as e:
-                # Update the status to 'failed' if an error occurs
                 email.write({'mail_scheduling_status': 'failed'})
-                email.message_post(body=f"Failed to send Email: {str(e)}")
+                email.message_post(body=f"Failed to send emails: {str(e)}")
 
     def action_cancel(self):
         """Cancel all scheduled emails."""
@@ -199,10 +189,10 @@ class SocialX(models.Model):
         """Helper method to post a single tweet"""
         config = self.env['ir.config_parameter'].sudo()
         auth = OAuth1(
-            config.get_param('CUSTOMER_KEY'),
-            config.get_param('CUSTOMER_KEY_SECRET'),
-            config.get_param('X_ACCESS_TOKEN'),
-            config.get_param('X_ACCESS_TOKEN_SECRET')
+            config.get_param('CUSTOMER_KEY1'),
+            config.get_param('CUSTOMER_KEY_SECRET1'),
+            config.get_param('X_ACCESS_TOKEN1'),
+            config.get_param('X_ACCESS_TOKEN_SECRET1')
         )
 
         payload = {"text": text}
@@ -225,10 +215,10 @@ class SocialX(models.Model):
         """Upload media to Twitter and return media_id"""
         config = self.env['ir.config_parameter'].sudo()
         auth = OAuth1(
-            config.get_param('CUSTOMER_KEY'),
-            config.get_param('CUSTOMER_KEY_SECRET'),
-            config.get_param('X_ACCESS_TOKEN'),
-            config.get_param('X_ACCESS_TOKEN_SECRET')
+            config.get_param('CUSTOMER_KEY1'),
+            config.get_param('CUSTOMER_KEY_SECRET1'),
+            config.get_param('X_ACCESS_TOKEN1'),
+            config.get_param('X_ACCESS_TOKEN_SECRET1')
         )
 
         try:
@@ -322,7 +312,7 @@ class SocialX(models.Model):
         except Exception as e:
             self.write({'scheduling_status': 'failed'})
             self.message_post(body=_("Failed to publish tweet thread: %s") % str(e))
-            print("Tweet thread failed: %s", str(e), exc_info=True)
+            print("Tweet thread failed: %s", str(e))
             raise
 
 class SocialInstagram(models.Model):

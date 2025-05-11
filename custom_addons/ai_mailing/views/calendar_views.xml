@@ -10,7 +10,8 @@
                             type="object"
                             string="Create Campaign"
                             class="btn-primary"
-                            invisble="id == False"/>
+                            invisble="id == False"
+                            groups="ai_mailing.group_marketing_responsible"/>
                 </header>
                 <sheet>
                     <group>

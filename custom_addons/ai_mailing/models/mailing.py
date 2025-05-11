@@ -19,13 +19,17 @@ class MarketingCampaign(models.Model):
     user_id = fields.Many2one('res.users', string='Responsible User', default=lambda self: self.env.user, tracking=True)
     record_color = fields.Integer('Color Index', compute='_compute_record_color')
 
-
+    color = fields.Integer(string='Color Index', default=0)
     status = fields.Selection([
         ('draft', 'Draft'),
         ('running', 'Running'),
         ('completed', 'Completed'),
         ('canceled', 'Canceled')
-    ], string="Status", default='draft', tracking=True)
+    ], string="Status", default='draft', group_expand="_read_group_stage_ids", tracking=True)
+
+    @api.model
+    def _read_group_stage_ids(self, stages, domain, order):
+        return [key for key, _ in self._fields['status'].selection]
 
     content_strategy = fields.Selection([
         ('engagement', 'Engagement'),
@@ -39,7 +43,7 @@ class MarketingCampaign(models.Model):
     link_ids = fields.Many2many('link.model', string='Links')
 
     # Tracking fields
-    tracked_link_ids = fields.One2many('link.tracker', 'campaign_id', string="Tracked Links")
+    tracked_link_ids = fields.One2many('link.tracker', 'campaign_id1', string="Tracked Links")
 
     email_ids = fields.One2many('social.email', 'campaign_id', string="Emails")
     x_ids = fields.One2many('social.x', 'campaign_id', string="Tweets")
@@ -161,16 +165,6 @@ class MarketingCampaign(models.Model):
 
             # Or add to the website's selectable pricelists
             website.pricelist_ids = [(4, pricelist.id)]
-
-        # Option B: Assign to specific customer groups (partners)
-        # Uncomment and modify as needed:
-        # partners = self.env['res.partner'].search([('your_criteria', '=', True)])
-        # for partner in partners:
-        #     partner.property_product_pricelist = pricelist.id
-
-        # Option C: Create a promotion rule to automatically apply this pricelist
-        # This requires the sale_promotion module in Enterprise
-
         self.message_post(body=_(
             "Discount applied to %s products via pricelist '%s'. "
             "The pricelist has been set as the website default pricelist.",
@@ -259,7 +253,7 @@ class MarketingCampaign(models.Model):
     def _compute_campaign_stats(self):
         """Compute campaign statistics for dashboard."""
         for campaign in self:
-            links = self.env['link.tracker'].search([('campaign_id', '=', campaign.id)])
+            links = self.env['link.tracker'].search([('campaign_id1', '=', campaign.id)])
             clicks = links.mapped('link_click_ids')
 
             campaign.click_count = len(clicks)
@@ -275,8 +269,7 @@ class MarketingCampaign(models.Model):
     def _update_total_cost(self):
         """Update the total cost based on cost detail records."""
         for campaign in self:
-            total = sum(campaign.cost_details_ids.mapped('amount'))
-            campaign.cost = total
+            campaign.cost = sum(campaign.cost_details_ids.mapped('amount'))
 
     def _compute_record_color(self):
         for rec in self:
@@ -473,30 +466,12 @@ class MarketingCampaign(models.Model):
         # Create the tracked link
         tracked_link = self.env['link.tracker'].create({
             'url': original_url,
-            'campaign_id': self.id,
+            'campaign_id1': self.id,
             'source_id': utm_source.id,
             'medium_id': utm_medium.id
         })
 
         return tracked_link.short_url
-
-    def action_view_click_analytics(self):
-        """Open the click analytics view for this campaign."""
-        self.ensure_one()
-        return {
-            'name': _('Campaign Click Analytics'),
-            'view_mode': 'tree,pivot,graph',
-            'res_model': 'link.tracker.click',
-            'type': 'ir.actions.act_window',
-            'domain': [('link_id', 'in', self.tracked_link_ids.ids)],
-            'context': {
-                'default_campaign_id': self.id,
-                'search_default_group_by_source': 1,
-                'search_default_group_by_medium': 1,
-                'search_default_group_by_device': 1,
-                'search_default_group_by_country': 1,
-            }
-        }
 
     def get_email_publish_dates(self):
         """Get all email publish dates for this campaign."""
@@ -536,6 +511,8 @@ class MarketingCampaign(models.Model):
 
     def generate_email_prompt(self, context, tags):
         """Generate prompt for email content creation."""
+        config = self.env['ir.config_parameter'].sudo()
+        logo = config.get_param('Logo')
         company_name = self.company_id.name if self.company_id else "our company"
         images = ", ".join(self.image_ids.mapped('urldes')) if self.image_ids else "no images"
         links = ", ".join(self.link_ids.mapped('urldes')) if self.link_ids else "no links"
@@ -547,9 +524,15 @@ class MarketingCampaign(models.Model):
         tracked_product_links = []
         if self.product_tags:
             for product in self.product_tags:
-                product_url = f"{base_url}/shop/product/{product.id}"
+                product_url = f"{base_url}/shop/product/{product.product_tmpl_id.id}"
                 tracked_url = self.generate_tracked_link(product_url, 'Email', 'Email')
                 tracked_product_links.append(f"- {product.name}: {tracked_url}")
+
+        # Discount information
+        discount_info = "No active discount"
+        if hasattr(self, 'apply_discount') and self.apply_discount:
+            discount_type_text = "percentage" if self.discount_type == 'percent' else "fixed amount"
+            discount_info = f"Active discount: {self.discount_value} {discount_type_text}"
 
         # Format product information
         if tracked_product_links:
@@ -572,6 +555,7 @@ class MarketingCampaign(models.Model):
         You are an AI Email Marketing Assistant. Your task is to generate a JSON-formatted marketing email with HTML content that is engaging, persuasive, and aligned with the given campaign details.
 
     **Campaign Details:**
+    - **Url logo of the company:** {logo}
     - **Start Date:** {start_date1}
     - **End Date:** {end_date1}
     - **Context:** {context}
@@ -582,9 +566,10 @@ class MarketingCampaign(models.Model):
     - **Content Strategy:** {content_strategy}
     - **Avoid Posting On:** {date_with_content_str}
     - **The Only Images**: {images}
-    - **The Only Links**: {links}
+    - **Just the raw link dont change them The Only Links**: {links}
     - **The Date of Today:** {today}
     - **Link to our Online Shop:** {onlineShop}
+    - **Discount Information:** {discount_info}
 
     **Instructions:**
     - Craft a **compelling subject line** that encourages email opens.
@@ -596,6 +581,7 @@ class MarketingCampaign(models.Model):
     - Highlight key **details**, including features, benefits, and unique selling points of the product or service.
     - Include a **strong call-to-action (CTA)** with an attractive button.
     - End with a **friendly and professional closing** that reinforces brand credibility.
+    - **- If there's an active discount, emphasize this prominently in the email as a special offer or sale.
     - Add a footer with unsubscribe option and company details.
 
     **Expected JSON Output Format:**
@@ -629,7 +615,7 @@ class MarketingCampaign(models.Model):
 
             format = "%Y-%m-%d %H:%M:%S"
             date_object = datetime.strptime(email_data.get("date_of_post"), format)
-            self.env['social.email'].create({
+            self.env['social.email'].with_context(mail_no_track=True).create({
                 'campaign_id': self.id,
                 'name': email_data.get("subject_line", ""),
                 'publish_date': date_object,
@@ -652,9 +638,15 @@ class MarketingCampaign(models.Model):
         tracked_product_links = []
         if self.product_tags:
             for product in self.product_tags:
-                product_url = f"{base_url}/shop/product/{product.id}"
+                product_url = f"{base_url}/shop/product/{product.product_tmpl_id.id}"
                 tracked_url = self.generate_tracked_link(product_url, 'social', 'Facebook')
                 tracked_product_links.append(f"- {product.name}: {tracked_url}")
+
+        # Discount information
+        discount_info = "No active discount"
+        if hasattr(self, 'apply_discount') and self.apply_discount:
+            discount_type_text = "percentage" if self.discount_type == 'percent' else "fixed amount"
+            discount_info = f"Active discount: {self.discount_value} {discount_type_text}"
 
         # Format product information
         if tracked_product_links:
@@ -689,12 +681,14 @@ class MarketingCampaign(models.Model):
         - **The Only Links**: {links}
         - **The Date of Today:** {today}
         - **Link to our Online Shop:** {base_url}/shop/
+        - **Discount Information:** {discount_info}
 
         ### **Post Requirements**
         - **Headline:** Craft an attention-grabbing, scroll-stopping headline.
         - **Body Text:** Create an engaging post using a mix of compelling copy and relevant emojis 🎯🔥.
         - **Call-to-Action (CTA):** Encourage users to take action (e.g., visit a website, comment, share, or make a purchase).
         - **Hashtags:** Include strategic and trending hashtags to maximize reach and visibility.
+        - **- If there's an active discount, emphasize this prominently in the post as a special offer or sale.
 
         Please return the Facebook post **as a structured JSON object** in the following format:
 
@@ -766,9 +760,15 @@ class MarketingCampaign(models.Model):
         tracked_product_links = []
         if self.product_tags:
             for product in self.product_tags:
-                product_url = f"{base_url}/shop/product/{product.id}"
+                product_url = f"{base_url}/shop/product/{product.product_tmpl_id.id}"
                 tracked_url = self.generate_tracked_link(product_url, 'social', 'Instagram')
                 tracked_product_links.append(f"- {product.name}: {tracked_url}")
+
+        # Discount information
+        discount_info = "No active discount"
+        if hasattr(self, 'apply_discount') and self.apply_discount:
+            discount_type_text = "percentage" if self.discount_type == 'percent' else "fixed amount"
+            discount_info = f"Active discount: {self.discount_value} {discount_type_text}"
 
         # Format product information
         if tracked_product_links:
@@ -799,6 +799,7 @@ class MarketingCampaign(models.Model):
         - **Tags:** {tags}
         - **Avoid Posting On:** {date_with_content_str}
         - **Today's Date:** {today}
+        - **Discount Information:** {discount_info}
 
         ---
 
@@ -811,11 +812,11 @@ class MarketingCampaign(models.Model):
 
         - **Online Shop (include link if relevant):** {onlineShop}
         - **Additional Campaign Links:** {links}
-
+        - **- If there's an active discount, emphasize this prominently in the post as a special offer or sale.
 
         ### 🧠 Your Output Must Include:
         Return your response in the **following strict JSON format** with high-quality content:
-
+        
         ```json
         {{
           "headline": "<Catchy, bold headline that grabs attention>",
@@ -886,10 +887,15 @@ class MarketingCampaign(models.Model):
         tracked_product_links = []
         if self.product_tags:
             for product in self.product_tags:
-                product_url = f"{base_url}/shop/product/{product.id}"
+                product_url = f"{base_url}/shop/product/{product.product_tmpl_id.id}"
                 tracked_url = self.generate_tracked_link(product_url, 'social', 'Twitter')
                 tracked_product_links.append(f"- {product.name}: {tracked_url}")
 
+        # Discount information
+        discount_info = "No active discount"
+        if hasattr(self, 'apply_discount') and self.apply_discount:
+            discount_type_text = "percentage" if self.discount_type == 'percent' else "fixed amount"
+            discount_info = f"Active discount: {self.discount_value} {discount_type_text}"
         # Format product information
         if tracked_product_links:
             product_list = "\n".join([
@@ -923,6 +929,7 @@ class MarketingCampaign(models.Model):
         - **The Only Links**: {links}
         - **The Date of Today:** {today}
         - **Link to our Online Shop:** {onlineShop}
+        - **Discount Information:** {discount_info}
 
         ### **Tweet Requirements**
         - **Text Length:** Ensure the tweet is within **280 characters**.
@@ -930,6 +937,8 @@ class MarketingCampaign(models.Model):
         - **Call-to-Action (CTA):** Encourage user interaction (e.g., "Retweet if you agree!", "Drop your thoughts below 👇").
         - **Media:** If applicable, suggest an image or GIF.
         - **Tone & Style:** Ensure the tweet is **witty, concise, and brand-aligned**.
+        - **Make sure to add the product links** in the tweet.
+        - **- If there's an active discount, emphasize this prominently in the post as a special offer or sale.
 
         Please return the tweet in the following structured JSON format:
 

@@ -1,22 +1,24 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 <odoo>
-    <menuitem id="mailing_menu_root" name="AIM"/>
+    <menuitem id="mailing_menu_root" name="AIM"
+    web_icon="ai_mailing,static/description/icon.png"/>
 
-    <menuitem name="Generate Email with AI"
+    <menuitem name="Campaigns"
               id="ai_mass_mailing_menu"
               parent="mailing_menu_root"
-              action="action_marketing_campaign"/>
+              action="action_marketing_campaign"
+                />
 
     <menuitem id="menu_owl_dashboard"
-                  name="Sales Dashboard"
+                  name="Campaign Insights"
                   action="action_marketing_dashboard_client"
-                  parent="mailing_menu_root"/>
+                  parent="mailing_menu_root"
+                  groups="ai_mailing.group_marketing_responsible"/>
 
 <!--    <menuitem id="menu_marketing_dashboard"-->
 <!--                  name="Marketing Analytics"-->
 <!--                  action="action_marketing_dashboard"-->
 <!--                  parent="mailing_menu_root"/>-->
-
 
     <menuitem id="menu_holiday_event_calendar"
               name="Holidays &amp; Events"

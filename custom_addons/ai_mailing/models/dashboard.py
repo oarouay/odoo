@@ -674,7 +674,7 @@ class MarketingCampaignClicksOverTime(models.Model):
         # 4. Configure Gemini and generate content
         try:
             genai.configure(api_key=google_api_key)
-            model = genai.GenerativeModel('gemini-1.5-flash')  # Or your preferred model
+            model = genai.GenerativeModel('gemini-2.0-flash')  # Or your preferred model
             gemini_response = model.generate_content(prompt)
 
             # Basic check if response has text

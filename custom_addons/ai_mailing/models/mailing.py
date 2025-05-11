@@ -605,7 +605,7 @@ class MarketingCampaign(models.Model):
         tags = ", ".join(self.tag_ids.mapped('name'))
         email_prompt = self.generate_email_prompt(context, tags)
         try:
-            gen = genai.GenerativeModel('gemini-1.5-flash')
+            gen = genai.GenerativeModel('gemini-2.0-flash')
             response = gen.generate_content(email_prompt)
             try:
                 r = self.extract_json_content(response.text)
@@ -717,7 +717,7 @@ class MarketingCampaign(models.Model):
         facebook_prompt = self.generate_facebook_prompt(context, tags)
 
         try:
-            gen = genai.GenerativeModel('gemini-1.5-flash')
+            gen = genai.GenerativeModel('gemini-2.0-flash')
             response = gen.generate_content(facebook_prompt)
             try:
                 r = self.extract_json_content(response.text)
@@ -843,7 +843,7 @@ class MarketingCampaign(models.Model):
         instagram_prompt = self.generate_instagram_prompt(context, tags)
 
         try:
-            gen = genai.GenerativeModel('gemini-1.5-flash')
+            gen = genai.GenerativeModel('gemini-2.0-flash')
             response = gen.generate_content(instagram_prompt)
             try:
                 r = self.extract_json_content(response.text)
@@ -963,7 +963,7 @@ class MarketingCampaign(models.Model):
         x_prompt = self.generate_x_prompt(context, tags)
 
         try:
-            gen = genai.GenerativeModel('gemini-1.5-flash')
+            gen = genai.GenerativeModel('gemini-2.0-flash')
             response = gen.generate_content(x_prompt)
 
             try:
